@@ -86,9 +86,19 @@ random_squares_sf <- st_sf(
 ) %>%
   mutate(size = as.numeric(st_area(geometry)))
 
-# Plot to check
-plot(st_geometry(florida_proj), col = "lightblue", main = "Non-overlapping Squares in Florida")
-plot(st_geometry(random_squares_sf), col = rgb(1, 0, 0, 0.5), add = TRUE)
+# Plot the data
+png("Figures/random_polygos.png", width = 8, height = 6, units = "in", res = 300)
+plot(st_geometry(florida_proj), col = "lightgrey", border = NA)
+plot(st_geometry(random_squares_sf), col = rgb(1, 0, 0, 0.8), border = NA, add = TRUE)
+plot(st_geometry(deluca_proj), col = "black", border = NA, add = TRUE)
+legend(x = par("usr")[1] + 0.2 * diff(par("usr")[1:2]),  # X position: a bit to the right of the left edge
+       y = par("usr")[3] + 0.3 * diff(par("usr")[3:4]),  # Y position: slightly above bottom
+       legend = c("Florida", "Random Polygons", "DeLuca Preserve"),
+       fill = c("lightgrey", rgb(1, 0, 0, 0.8), "black"),
+       border = NA,
+       bty = "n",
+       xpd = NA)
+dev.off()
 
 # Check to make sure the size aligns with the target area
 square_polygons_sf <- square_polygons_sf %>%
