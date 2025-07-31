@@ -67,4 +67,4 @@ deluca_bioblitz_count <- deluca_bioblitz %>%
 
 results_w_deluca <- left_join(results, deluca_bioblitz_count, by=c("Species"="taxon_species_name"))
 
-write_csv(results_w_deluca, "Data/Summarized_Data.regional_species_counts.csv")
+write_csv(results_w_deluca, "Data/Summarized_Data/regional_species_counts.csv")

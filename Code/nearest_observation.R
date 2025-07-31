@@ -10,7 +10,7 @@ library(dplyr)
 library(purrr)
 
 # read in count data from the bioblitzes
-count_data <- read_csv("Data/Summarized_Data/regional_species_counts")
+count_data <- read_csv("Data/Summarized_Data/regional_species_counts.csv")
 
 # now determine which species have less than 100 observations
 rare_obs <- count_data %>%
