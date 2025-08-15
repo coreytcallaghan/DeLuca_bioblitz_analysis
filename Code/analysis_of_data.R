@@ -5,6 +5,11 @@
 library(tidyverse)
 library(ggplot2)
 library(readr)
+library(sf)
+library(viridis)
+library(ggthemes)
+library(ggspatial)
+library(biscale)
 
 # read in data
 random_polygon_effort <- read_csv("Data/Summarized_Data/random_polygon_effort.csv")
@@ -69,7 +74,6 @@ ggplot(first_obs_species_all, aes(x = observed_on))+
   ylab("Species count (RG + Needs ID)")+
   theme_bw()+
   theme(axis.text=element_text(color="black"))
-
 
 # plot an accumulation type plot of new species
 # now for RG only!
@@ -174,3 +178,92 @@ records_value_summary %>%
        title = "Bioblitz Captures Many Rare Species") +
   theme_minimal() +
   coord_flip()
+
+
+
+
+####################
+#### LPH addition
+## Map of observations for species in DeLuca Preserve
+deluca <- st_read("Data/Shapefile/deluca.shp")
+
+# Transform DeLuca to WGS84
+deluca <- st_transform(deluca, crs = 4326)
+
+# Convert bioblitz data to sf
+bioblitz_sf <- deluca_bioblitz %>%
+  filter(!is.na(latitude), !is.na(longitude)) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326)
+
+# Keep only points within DeLuca
+bioblitz_sf <- st_filter(bioblitz_sf, deluca, .predicate = st_within)
+
+# Project to UTM zone
+bioblitz_sf_proj <- st_transform(bioblitz_sf, 32617)
+
+# Create 500m hex grid for data
+hex_grid <- st_make_grid(bioblitz_sf_proj, cellsize = 500, square = FALSE) %>%
+  st_sf() %>%
+  mutate(hex_id = row_number())
+
+# Join points to hex grid
+bioblitz_joined <- st_join(bioblitz_sf_proj, hex_grid, join = st_within)
+
+# Summarize observation and species counts per hex
+hex_summary <- bioblitz_joined %>%
+  st_drop_geometry() %>%
+  group_by(hex_id) %>%
+  summarise(
+    n_obs = n(),
+    n_species = n_distinct(taxon_species_name)
+  ) %>%
+  left_join(hex_grid, by = "hex_id") %>%
+  st_as_sf()
+
+# Transform back to lon/lat for plotting
+hex_summary_ll <- st_transform(hex_summary, 4326)
+
+##############################################
+### Bivariate classification and mapping
+##############################################
+
+# Classify both variables into quantile bins
+hex_bi <- bi_class(hex_summary_ll, x = n_obs, y = n_species, style = "quantile", dim = 3)
+
+# Bivariate map with DeLuca boundary as underlay
+bi_map <- ggplot() +
+  geom_sf(data = deluca, fill = "gray95", color = "gray70") +
+  geom_sf(data = hex_bi, aes(fill = bi_class), color = "black", size = 0.3) +
+  bi_scale_fill(pal = "DkViolet", dim = 3) +
+  annotation_north_arrow(location = "tl", which_north = "true",
+                         style = north_arrow_fancy_orienteering()) +
+  labs(
+    title = "Bivariate Map of Observation Density and Species Richness",
+    subtitle = "DeLuca Preserve — 500m hexagons",
+    x = expression("Longitude ("*degree*W*")"),
+    y = expression("Latitude ("*degree*N*")")
+  ) +
+  theme_classic() +
+  theme(
+    legend.position = "none",
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12, color = "black"),
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12)
+  )
+
+# Bivariate legend
+bi_legend <- bi_legend(
+  pal = "DkViolet",
+  dim = 3,
+  xlab = "Higher Observation Density →",
+  ylab = "↑ Higher Species Richness",
+  size = 10
+)
+
+# Combine map and legend
+bivariate_plot_final <- bi_map +
+  inset_element(bi_legend, left = 0.7, bottom = 0.7, right = 1, top = 1)
+
+bivariate_plot_final
+
