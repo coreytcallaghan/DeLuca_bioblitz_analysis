@@ -197,7 +197,9 @@ inat_files <- list.files("Data/Florida_Data/")
 # Read and combine them into one dataframe
 inat_combined <- map_dfr(inat_files, read_csv)
 
-
+# Brittany's addition: 
+inat_files <- list.files("Data/Florida_Data/", full.names = TRUE)
+inat_combined <- bind_rows(lapply(inat_files[1:3], read_csv))
 
 #######################
 ### Bar plot
