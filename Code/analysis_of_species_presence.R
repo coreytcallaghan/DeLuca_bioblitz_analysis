@@ -2,20 +2,26 @@
 # Levi Hoskins
 # 7 Aug 2025
 
-library(dplyr)
-library(lubridate)
-library(ggplot2)
+library(tidyverse)
 library(patchwork)
-library(readr)
 library(scales)
-library(purrr)
+library(vegan)
+library(sf)
+library(ggrepel)
 
 # Read in the bioblitz data
 deluca_bioblitz <- read_csv("Data/DeLuca_iNaturalist_Data/deluca_bioblitz_obs.csv")
 
 ## Get number of unique observers
 unique(deluca_bioblitz$user_login) #203
+unique(deluca_bioblitz$observed_on) #5, but 2023 is broken into the 24th and 25th (3 observations)
+sum(deluca_bioblitz$observed_on == "2023-02-25")
+deluca_bioblitz <- deluca_bioblitz %>%
+  filter(observed_on != "2023-02-25")
 
+########################
+# Plot Supplementary Figure for observations and observers bell curve log scale
+#########################
 # Summarize number of observations per observer
 observer_summary <- deluca_bioblitz %>%
   filter(!is.na(user_login)) %>%
@@ -29,7 +35,7 @@ observer_summary <- observer_summary %>%
   mutate(top_5 = n_obs >= quantile(n_obs, 0.95))
 
 # Plot with highlighted top 5%
-ggplot(observer_summary, aes(x = n_obs, fill = top_5)) +
+o_productivity <- ggplot(observer_summary, aes(x = n_obs, fill = top_5)) +
   geom_histogram(
     bins = 30,
     color = "white",
@@ -46,8 +52,7 @@ ggplot(observer_summary, aes(x = n_obs, fill = top_5)) +
     labels = comma
   ) +
   labs(
-    title = "Observer Productivity in DeLuca Preserve",
-    subtitle = "Top 5% observers highlighted",
+    title = NULL,
     x = "Number of Observations (log scale)",
     y = "Number of Observers"
   ) +
@@ -61,6 +66,13 @@ ggplot(observer_summary, aes(x = n_obs, fill = top_5)) +
     legend.position = "top",
     legend.text = element_text(size = 12)
   )
+o_productivity
+
+ggsave("Figures/Supp/observer_productivity.png", o_productivity, height = 6, width = 8, bg= "transparent")
+
+#################
+## Get quick results for research grade obs
+#################
 
 ## Filter to only include research grade data
 deluca_bioblitz_research <- deluca_bioblitz %>%
@@ -94,115 +106,460 @@ rare_species_2 <- most_observed_species %>%
   filter(observation_count <= 2)
 rare_species_2 #403
 
-### Count how many species have only 1 or 2 research-grade observations
+### Count how many species have only 1 research-grade observation
 rare_species_1 <- most_observed_species %>%
   filter(observation_count <= 1)
 rare_species_1 #276
 
-# Top 5 most observed species
+#### Quick visualization of top five species + number of observations
 deluca_bioblitz_research %>%
   group_by(taxon_species_name, common_name) %>%
   summarise(observation_count = n(), .groups = "drop") %>%
   arrange(desc(observation_count)) %>%
   slice_head(n = 5) %>%
-  ggplot(aes(x = reorder(common_name, observation_count), y = observation_count)) +
-  geom_col(fill = "darkgreen") +
+  ggplot(aes(x = reorder(common_name, observation_count), 
+             y = observation_count, 
+             fill = common_name)) + 
+  geom_col() +
   labs(
     title = NULL,
     x = NULL,
     y = NULL
   ) +
   theme_classic(base_size = 14) +
+  coord_flip() +
+  theme(legend.position = "none") 
+
+#####################
+## Read in entire florida inat
+#####################
+# Brittany's addition: 
+#inat_files <- list.files("Data/Florida_Data/", full.names = TRUE)
+#inat_combined <- bind_rows(lapply(inat_files[1:65], read_csv))
+
+#saveRDS(inat_combined, "Data/Florida_Data/inat_combined.RDS")
+
+## Read in entire Florida iNat
+#inat_combined <- readRDS("Data/Florida_Data/inat_combined.RDS")
+
+#head(inat_combined)
+#colnames(inat_combined)
+
+#inat_combined_research <- inat_combined %>%
+#  dplyr::select(
+#    id, uuid, observed_on, time_observed_at, created_at,
+#    quality_grade, license, url, image_url,
+#    user_id, user_login,
+#    place_guess, latitude, longitude, positional_accuracy,
+#    place_town_name, place_county_name, place_state_name,
+#    place_country_name,
+#    species_guess, scientific_name, common_name, iconic_taxon_name,
+#    taxon_id, 
+#    taxon_kingdom_name, taxon_phylum_name, taxon_class_name,
+#    taxon_order_name, taxon_family_name, taxon_genus_name,
+#    taxon_species_name, taxon_subspecies_name
+#  )
+
+## Do not need to filter to only research grade data because that is all the file contains
+## Save as RDS for easy call back
+#saveRDS(inat_combined_research, "Data/Florida_Data/inat_combined_research.RDS")
+
+## Read in cleaned Florida iNat
+### Come back to this code 
+inat_combined_research <- readRDS("Data/Florida_Data/inat_combined_research.RDS")
+
+
+#######################
+## Prepare figure 4 for 
+## rarity of species in DeLuca
+## Three different ways
+# 1 is proportion for species
+# 2 is observations + proportions
+# 3 is lm and residuals
+#######################
+### Prepare relative observation ratio per species
+# Count occurrences in DeLuca
+deluca_freq <- deluca_bioblitz_research %>%
+  count(scientific_name, name = "obs_deluca")
+
+# Count occurrences in Florida (restricted to species observed at DeLuca)
+inat_freq <- inat_combined_research %>%
+  filter(scientific_name %in% deluca_freq$scientific_name) %>%
+  count(scientific_name, name = "obs_florida")
+
+# Merge & compute proportions
+freq_df <- deluca_freq %>%
+  left_join(inat_freq, by = "scientific_name") %>%
+  mutate(
+    freq_ratio_deluca  = obs_deluca / obs_florida,
+    freq_ratio_florida = obs_florida / obs_deluca,
+    deluca_only        = (obs_deluca == obs_florida),  # equal counts = only seen at DeLuca within filtered data
+    category = case_when(
+      deluca_only ~ "Unique to DeLuca",
+      freq_ratio_deluca > 0.25 & freq_ratio_florida <= 0.25 ~ "Locally Rare",
+      freq_ratio_deluca <= 0.25 & freq_ratio_florida > 0.25 ~ "Common Everywhere",
+      freq_ratio_deluca > 0.25 & freq_ratio_florida > 0.25 ~ "Rare Everywhere",
+      TRUE ~ "Underreported Everywhere"
+    )
+  )
+
+# Labeling logic: Top 5 statewide + all DeLuca-only + all Rare Everywhere
+label_points <- freq_df %>%
+  arrange(desc(freq_ratio_florida)) %>%
+  slice_head(n = 5) %>%
+  bind_rows(freq_df %>% filter(deluca_only | category == "Rare Everywhere")) %>%
+  distinct(scientific_name, .keep_all = TRUE)
+
+### Plot
+freq_plot_prop <- ggplot(freq_df, aes(x = obs_deluca, y = freq_ratio_deluca, color = category)) +
+  geom_point(alpha = 1, size = 3) +
+  geom_text_repel(
+    data = label_points,
+    aes(label = scientific_name),
+    size = 3,
+    fontface = "bold",
+    max.overlaps = Inf,
+    na.rm = TRUE
+  ) +
+  labs(
+    x = "DeLuca Observations (total count)",
+    y = "Proportion of DeLuca / Florida observations",
+    color = "Category"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.background = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black")
+  ) +
+  scale_color_manual(
+    values = c(
+      "Unique to DeLuca" = "#D73027",
+      "Locally Rare" = "#FC8D59",
+      "Rare Everywhere" = "#467010",
+      "Common Everywhere" = "#4575B4",
+      "Underreported Everywhere" = "#FEE08B"
+    )
+  )
+
+freq_plot_prop
+
+## save as png
+ggsave("Figures/figure_4_rarity_deluca_state.png", plot = freq_plot_prop, bg = "transparent")
+
+
+##################
+##### Repeat, but use obs and not proportions
+#################
+# Combine counts
+freq_df_obs <- deluca_freq %>%
+  left_join(inat_freq, by = "scientific_name") %>%
+  mutate(
+    deluca_only = (obs_deluca == obs_florida)
+  )
+
+# Quadrant classification based on total observation thresholds
+freq_df_obs <- freq_df_obs %>%
+  mutate(
+    category = case_when(
+      obs_deluca == obs_florida ~ "Unique to DeLuca", 
+      obs_deluca <= 10 & obs_florida <= 50 ~ "Rare Everywhere",
+      obs_deluca <= 10 & obs_florida > 50 ~ "Locally Rare",
+      obs_deluca > 10 & obs_florida <= 50 ~ "Common in DeLuca, Rare Statewide",
+      obs_deluca > 10 & obs_florida > 50 ~ "Common Everywhere",
+      TRUE ~ "Underreported Everywhere"
+    )
+  )
+
+
+# Identify top 5 species for Florida
+top_florida_obs <- freq_df_obs %>% 
+  arrange(desc(obs_florida)) %>% 
+  slice_head(n = 5)
+
+# Identify top 5 species for DeLuca
+top_deluca_obs <- freq_df_obs %>%
+  arrange(desc(obs_deluca)) %>%
+  slice_head(n = 5)
+
+# Identify top 5 species that are rare everywhere
+top_rare_everywhere <- freq_df_obs %>%
+  filter(category == "Rare Everywhere") %>%
+  arrange(obs_florida) %>%
+  slice_head(n = 5)
+
+# Filter species for labeling: top 5 rare everywhere + all unique to DeLuca
+label_points <- freq_df_obs %>%
+  filter(
+    category == "Unique to DeLuca" |
+      scientific_name %in% top_rare_everywhere$scientific_name |
+      scientific_name %in% top_florida_obs$scientific_name |
+      scientific_name %in% top_deluca_obs$scientific_name
+  )
+
+# Plot
+freq_plot_obs <- ggplot(freq_df_obs, aes(x = obs_florida, y = obs_deluca, color = category)) +
+  geom_jitter(alpha = 1) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black", linewidth = 1) +
+  geom_text_repel(
+    data = label_points,
+    aes(label = scientific_name),
+    inherit.aes = TRUE,
+    size = 3,
+    fontface = "bold",
+    max.overlaps = Inf,
+    na.rm = TRUE
+  ) +
+  labs(
+    x = "Statewide Observations",
+    y = "DeLuca Observations",
+    color = "Category",
+    caption = "Dashed line = 1:1 frequency"
+  ) +
+  scale_x_log10(labels = scales::label_number(accuracy = 1)) +
+  scale_y_log10(labels = scales::label_number(accuracy = 1)) +
+  scale_color_manual(
+    values = c(
+      "Unique to DeLuca" = "#D73027",
+      "Rare Everywhere" = "#FC8D59",
+      "Locally Rare" = "#467010",
+      "Common in DeLuca, Rare Statewide" = "#FEE08B",
+      "Common Everywhere" = "#4575B4",
+      "Underreported Everywhere" = "#999999"
+    )
+  ) +
+  theme_minimal() +
+  theme(
+    panel.background = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black")
+  )
+
+freq_plot_obs
+
+## save as png
+ggsave("Figures/figure_4_rarity_deluca_state_obs.png", plot = freq_plot_obs, bg = "transparent")
+
+#### Now repeat but with a linear model
+# Fit linear model
+lm_obs <- lm(obs_deluca ~ obs_florida, data = freq_df_obs)
+
+# Add residuals to the df
+freq_df_obs <- freq_df_obs %>%
+  mutate(residuals = resid(lm_obs))
+
+# label points -- same as above
+label_points <- freq_df_obs %>%
+  filter(
+    category == "Unique to DeLuca" |
+      scientific_name %in% top_rare_everywhere$scientific_name |
+      scientific_name %in% top_florida_obs$scientific_name |
+      scientific_name %in% top_deluca_obs$scientific_name
+  )
+
+# Plot residuals
+residual_plot <- ggplot(freq_df_obs, aes(x = obs_florida, y = residuals, color = category)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_jitter(alpha = 3) +
+  geom_point(alpha = 1) +
+  geom_text_repel(
+    data = label_points,
+    aes(label = scientific_name),
+    inherit.aes = TRUE,
+    size = 3,
+    fontface = "bold",
+    max.overlaps = Inf
+  ) +
+  labs(
+    x = "Statewide Observations",
+    y = "Residuals (DeLuca - predicted)",
+    color = "Category",
+    caption = "Residuals from linear model: obs_deluca ~ obs_florida"
+  ) +
+  scale_x_log10(labels = scales::label_number(accuracy = 1)) +
+  theme_minimal() +
+  theme(
+    panel.background = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black")
+  ) +
+  scale_color_manual(
+    values = c(
+      "Unique to DeLuca" = "#D73027",
+      "Rare Everywhere" = "#FC8D59",
+      "Locally Rare" = "#467010",
+      "Common in DeLuca, Rare Statewide" = "#FEE08B",
+      "Common Everywhere" = "#4575B4",
+      "Underreported Everywhere" = "#999999"
+    )
+  )
+
+residual_plot
+
+ggsave("Figures/figure_4_lm_deluca_residuals_rarity.png", plot = residual_plot, bg = "transparent")
+
+
+
+############################
+## Quantify iNat data with Shannon's
+## from Bioblitz and Florida
+############################
+
+### Running Shannon's Diversity Index:
+## DeLuca Shannon Index 5.809113
+deluca_counts <- deluca_bioblitz_research %>%
+  count(taxon_species_name) %>%
+  pull(n)
+
+shannon_deluca <- diversity(deluca_counts, index = "shannon")
+
+## Florida Shannon Index 6.819194
+fl_counts <- inat_combined_research %>%
+  count(taxon_species_name) %>%
+  pull(n)
+
+shannon_florida <- diversity(fl_counts, index = "shannon")
+
+
+# now think about valuable observations (in terms of rarity)
+# Compute uniqueness indicators
+
+# Precompute sets so takes less time to run for deluca, osceola, and florida
+deluca_species <- deluca_bioblitz_research$taxon_species_name
+osceola_species <- inat_combined_research %>%
+  filter(place_county_name == "Osceola") %>%
+  pull(taxon_species_name)
+florida_species <- inat_combined_research$taxon_species_name
+
+# Create summary table
+records_value_summary <- tibble(
+  taxon_species_name = unique(c(deluca_species, florida_species))
+) %>%
+  mutate(
+    deluca_bioblitz = taxon_species_name %in% deluca_species,
+    osceola_county = taxon_species_name %in% osceola_species,
+    florida_state = taxon_species_name %in% florida_species
+  )
+
+# Summary metrics
+summary_metrics <- records_value_summary %>%
+  summarise(
+    total_species = n(),
+    deluca_unique_species = sum(deluca_bioblitz & !osceola_county & !florida_state),
+    county_species = sum(osceola_county),
+    pct_county = mean(osceola_county) * 100,
+    state_species = sum(florida_state),
+    pct_state = mean(florida_state) * 100
+  )
+
+summary_metrics
+
+# Identify species unique to DeLuca
+records_value_summary <- records_value_summary %>%
+  mutate(unique_to_deluca = deluca_bioblitz & !osceola_county & !florida_state)
+
+##
+records_value_summary %>% 
+  summarise(
+    n_deluca = sum(deluca_bioblitz),
+    n_osceola = sum(osceola_county),
+    n_florida = sum(florida_state),
+    n_unique = sum(unique_to_deluca)
+  )
+
+# Total number of Florida species
+n_florida <- sum(records_value_summary$florida_state)
+
+# Bar heights: all proportions relative to Florida
+df_plot <- tibble(
+  Region = factor(
+    c("DeLuca", "Osceola", "Florida"),
+    levels = c("DeLuca", "Osceola", "Florida")
+  ),
+  PropFlorida = c(
+    sum(records_value_summary$deluca_bioblitz) / n_florida,
+    sum(records_value_summary$osceola_county) / n_florida,
+    n_florida / n_florida  # always 1
+  )
+)
+
+# Plot
+ggplot(df_plot, aes(x = Region, y = PropFlorida)) +
+  geom_col(fill = "darkgreen", alpha = 1) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  labs(
+    y = "% of Florida Species Present",
+    x = "Region",
+    title = NULL
+  ) +
+  theme_minimal()
+
+# County rarity classification for species in Osceola County
+county_counts <- inat_combined_research %>%
+  filter(place_county_name == "Osceola") %>%
+  count(taxon_species_name, name = "obs_count")
+
+county_counts %>%
+  mutate(rarity_class = case_when(
+    obs_count <= 5 ~ "Very rare in county (≤5)",
+    obs_count <= 20 ~ "Rare (6–20)",
+    TRUE ~ "Common (>20)"
+  )) %>%
+  count(rarity_class) %>%
+  ggplot(aes(x = rarity_class, y = n, fill = rarity_class)) +
+  geom_col(show.legend = FALSE) +
+  labs(
+    x = "County Rarity Class",
+    y = "Number of Species Documented",
+    title = NULL
+  ) +
+  theme_minimal() +
   coord_flip()
 
-## Taxonmic focus of DeLuca compared to Florida
-# Observed richness per group in DeLuca Bioblitz
-deluca_group_counts <- deluca_bioblitz_research %>%
-  group_by(iconic_taxon_name) %>%
-  summarise(n_species = n_distinct(taxon_species_name)) %>%
-  mutate(proportion = n_species / sum(n_species))
+# Rarity classification for species in DeLuca Bioblitz
+deluca_counts <- deluca_bioblitz_research %>%
+  count(taxon_species_name, name = "obs_count")
 
-######## 65 csv files so takes a second to run
-inat1 <- read_csv("Data/Florida_Data/inat1.csv")
-inat2 <- read_csv("Data/Florida_Data/inat2.csv")
-inat3 <- read_csv("Data/Florida_Data/inat3.csv")
-inat4 <- read_csv("Data/Florida_Data/inat4.csv")
-inat5 <- read_csv("Data/Florida_Data/inat5.csv")
-inat6 <- read_csv("Data/Florida_Data/inat6.csv")
-inat7 <- read_csv("Data/Florida_Data/inat7.csv")
-inat8 <- read_csv("Data/Florida_Data/inat8.csv")
-inat9 <- read_csv("Data/Florida_Data/inat9.csv")
-inat10 <- read_csv("Data/Florida_Data/inat10.csv")
-inat11 <- read_csv("Data/Florida_Data/inat11.csv")
-inat12 <- read_csv("Data/Florida_Data/inat12.csv")
-inat13 <- read_csv("Data/Florida_Data/inat13.csv")
-inat14 <- read_csv("Data/Florida_Data/inat14.csv")
-inat15 <- read_csv("Data/Florida_Data/inat15.csv")
-inat16 <- read_csv("Data/Florida_Data/inat16.csv")
-inat17 <- read_csv("Data/Florida_Data/inat17.csv")
-inat18 <- read_csv("Data/Florida_Data/inat18.csv")
-inat19 <- read_csv("Data/Florida_Data/inat19.csv")
-inat20 <- read_csv("Data/Florida_Data/inat20.csv")
-inat21 <- read_csv("Data/Florida_Data/inat21.csv")
-inat22 <- read_csv("Data/Florida_Data/inat22.csv")
-inat23 <- read_csv("Data/Florida_Data/inat23.csv")
-inat24 <- read_csv("Data/Florida_Data/inat24.csv")
-inat25 <- read_csv("Data/Florida_Data/inat25.csv")
-inat26 <- read_csv("Data/Florida_Data/inat26.csv")
-inat27 <- read_csv("Data/Florida_Data/inat27.csv")
-inat28 <- read_csv("Data/Florida_Data/inat28.csv")
-inat29 <- read_csv("Data/Florida_Data/inat29.csv")
-inat30 <- read_csv("Data/Florida_Data/inat30.csv")
-inat31 <- read_csv("Data/Florida_Data/inat31.csv")
-inat32 <- read_csv("Data/Florida_Data/inat32.csv")
-inat33 <- read_csv("Data/Florida_Data/inat33.csv")
-inat34 <- read_csv("Data/Florida_Data/inat34.csv")
-inat35 <- read_csv("Data/Florida_Data/inat35.csv")
-inat36 <- read_csv("Data/Florida_Data/inat36.csv")
-inat37 <- read_csv("Data/Florida_Data/inat37.csv")
-inat38 <- read_csv("Data/Florida_Data/inat38.csv")
-inat39 <- read_csv("Data/Florida_Data/inat39.csv")
-inat40 <- read_csv("Data/Florida_Data/inat40.csv")
-inat41 <- read_csv("Data/Florida_Data/inat41.csv")
-inat42 <- read_csv("Data/Florida_Data/inat42.csv")
-inat43 <- read_csv("Data/Florida_Data/inat43.csv")
-inat44 <- read_csv("Data/Florida_Data/inat44.csv")
-inat45 <- read_csv("Data/Florida_Data/inat45.csv")
-inat46 <- read_csv("Data/Florida_Data/inat46.csv")
-inat47 <- read_csv("Data/Florida_Data/inat47.csv")
-inat48 <- read_csv("Data/Florida_Data/inat48.csv")
-inat49 <- read_csv("Data/Florida_Data/inat49.csv")
-inat50 <- read_csv("Data/Florida_Data/inat50.csv")
-inat51 <- read_csv("Data/Florida_Data/inat51.csv")
-inat52 <- read_csv("Data/Florida_Data/inat52.csv")
-inat53 <- read_csv("Data/Florida_Data/inat53.csv")
-inat54 <- read_csv("Data/Florida_Data/inat54.csv")
-inat55 <- read_csv("Data/Florida_Data/inat55.csv")
-inat56 <- read_csv("Data/Florida_Data/inat56.csv")
-inat57 <- read_csv("Data/Florida_Data/inat57.csv")
-inat58 <- read_csv("Data/Florida_Data/inat58.csv")
-inat59 <- read_csv("Data/Florida_Data/inat59.csv")
-inat60 <- read_csv("Data/Florida_Data/inat60.csv")
-inat61 <- read_csv("Data/Florida_Data/inat61.csv")
-inat62 <- read_csv("Data/Florida_Data/inat62.csv")
-inat63 <- read_csv("Data/Florida_Data/inat63.csv")
-inat64 <- read_csv("Data/Florida_Data/inat64.csv")
-inat65 <- read_csv("Data/Florida_Data/inat65.csv")
+deluca_counts %>%
+  mutate(rarity_class = case_when(
+    obs_count <= 5 ~ "Very rare (≤5)",
+    obs_count <= 20 ~ "Rare (6–20)",
+    TRUE ~ "Common (>20)"
+  )) %>%
+  count(rarity_class) %>%
+  ggplot(aes(x = rarity_class, y = n, fill = rarity_class)) +
+  geom_col(show.legend = FALSE) +
+  labs(
+    x = "DeLuca Rarity Class",
+    y = "Number of Species Documented",
+    title = NULL
+  ) +
+  theme_minimal() +
+  coord_flip()
 
-# Generate file paths for inat1.csv to inat65.csv
-inat_files <- paste0("Data/Florida_Data/inat", 1:65, ".csv")
 
-inat_files <- list.files("Data/Florida_Data/")
 
-# Read and combine them into one dataframe
-inat_combined <- map_dfr(inat_files, read_csv)
 
+
+
+
+
+
+
+######################
+# Supplementary figures
+# Visualizing the groups of species found
+# For DeLuca only, not Florida
+######################
 
 
 #######################
 ### Bar plot
 ######################
-#### similar to sam's to show taxnomy totals
+#### similar to sam's to show taxonomy totals
 ## chosen birds, plants, and insects --- although any other works as well
 
 ### Total unique species by Kingdom
@@ -428,4 +785,5 @@ final_pie_plot_pretty <- (phylum_pie | plant_class_pie) / (insect_order_pie | bi
   plot_layout(widths = c(1, 1), heights = c(1, 1))
 
 final_pie_plot_pretty
+
 

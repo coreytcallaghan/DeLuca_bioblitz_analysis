@@ -1,15 +1,16 @@
-## A script for some analysis of the DeLuca bioblitz data
-
+# A script for some analysis of the DeLuca bioblitz data
+## This includes figures 3 and 5, and the two parts of figure figure 2 (the DuLuca plot and bivariate plot)
+### Species accumulation curve, histogram for sampling over years, and violin plot
 
 # packages
 library(tidyverse)
-library(ggplot2)
-library(readr)
 library(sf)
-library(viridis)
-library(ggthemes)
-library(ggspatial)
 library(biscale)
+library(patchwork)
+library(ggspatial)
+library(RStoolbox)
+library(maptiles)
+library(terra)
 
 # read in data
 random_polygon_effort <- read_csv("Data/Summarized_Data/random_polygon_effort.csv")
@@ -26,6 +27,11 @@ length(unique(deluca_bioblitz$observed_on))
 
 unique(deluca_bioblitz$observed_on)
 
+##########################################
+### Making figure 3, both left and right
+## Species accumulation curve and frequency distribution
+########################################
+
 # make a histogram of all species observed
 species_hist_all <- deluca_bioblitz %>%
   dplyr::select(taxon_species_name, quality_grade) %>%
@@ -33,7 +39,7 @@ species_hist_all <- deluca_bioblitz %>%
   group_by(taxon_species_name) %>%
   summarize(N=n())
 
-ggplot(species_hist_all, aes(x=N))+
+species_hist_plot_all <- ggplot(species_hist_all, aes(x=N))+
   geom_histogram(color="black", fill="gray80")+
   theme_bw()+
   theme(axis.text=element_text(color="black"))+
@@ -48,7 +54,7 @@ species_hist_RG <- deluca_bioblitz %>%
   group_by(taxon_species_name) %>%
   summarize(N=n())
 
-ggplot(species_hist_RG, aes(x=N))+
+species_hist_plot_RG <- ggplot(species_hist_RG, aes(x=N))+
   geom_histogram(color="black", fill="gray80")+
   theme_bw()+
   theme(axis.text=element_text(color="black"))+
@@ -66,7 +72,7 @@ first_obs_species_all <- deluca_bioblitz %>%
   summarise(new_species = n_distinct(taxon_species_name), .groups = "drop") %>%
   mutate(cumulative_species = cumsum(new_species))
   
-ggplot(first_obs_species_all, aes(x = observed_on))+
+accum_all_plot <- ggplot(first_obs_species_all, aes(x = observed_on))+
   geom_col(aes(y = new_species), fill = "steelblue", alpha = 0.6, width=4)+
   geom_line(aes(y = cumulative_species), color = "darkgreen", size = 1.2)+
   geom_point(aes(y = cumulative_species), size = 2, color = "darkgreen")+
@@ -88,7 +94,7 @@ first_obs_species_RG <- deluca_bioblitz %>%
   summarise(new_species = n_distinct(taxon_species_name), .groups = "drop") %>%
   mutate(cumulative_species = cumsum(new_species))
 
-ggplot(first_obs_species_RG, aes(x = observed_on))+
+accum_RG_plot <- ggplot(first_obs_species_RG, aes(x = observed_on))+
   geom_col(aes(y = new_species), fill = "steelblue", alpha = 0.6, width=4)+
   geom_line(aes(y = cumulative_species), color = "darkgreen", size = 1.2)+
   geom_point(aes(y = cumulative_species), size = 2, color = "darkgreen")+
@@ -97,90 +103,11 @@ ggplot(first_obs_species_RG, aes(x = observed_on))+
   theme_bw()+
   theme(axis.text=element_text(color="black"))
 
+#### Final figure 3
+final_figure_3 <- species_hist_plot_RG + accum_RG_plot
+final_figure_3
 
-########## let's do some context of how DeLuca 'performs' to 100 random polygons
-
-# first get the values for the DeLuca
-deluca_values <- data.frame(number_of_observations=nrow(deluca_bioblitz),
-                            number_of_observers=length(unique(deluca_bioblitz$user_id)),
-                            number_of_species=deluca_bioblitz %>%
-                              dplyr::filter(quality_grade=="research") %>%
-                              dplyr::select(taxon_species_name) %>%
-                              dplyr::filter(complete.cases(taxon_species_name)) %>%
-                              distinct() %>%
-                              nrow(.)) %>%
-  pivot_longer(cols = everything()) 
-
-random_polygon_effort %>%
-  dplyr::select(polygon_id, number_of_observations, number_of_observers, number_of_species) %>%
-  pivot_longer(cols=c("number_of_observations", "number_of_observers", "number_of_species")) %>%
-  ggplot(., aes(x=value, y=name))+
-  geom_violin()+
-  geom_point(data = deluca_values, aes(x = value, y = name),
-             color = "red", size = 3)+
-  facet_wrap(~name, scales="free")+
-  scale_x_log10()+
-  theme_bw()+
-  theme(axis.text=element_text(color="black"))+
-  theme(axis.text.y=element_blank())+
-  theme(axis.title.y=element_blank())
-
-
-# now think about valuable observations (in terms of rarity)
-# Compute uniqueness indicators
-records_value_summary <- regional_species_counts %>%
-  mutate(
-    only_county = `Osceola County` == deluca_bioblitz,  # All county records from bioblitz
-    only_state  = Florida == deluca_bioblitz,  # All state records from bioblitz
-    only_world  = All == deluca_bioblitz       # Extreme: world unique (unlikely)
-  )
-
-
-summary_metrics <- records_value_summary %>%
-  summarise(
-    total_species = n(),
-    county_unique_species = sum(only_county),
-    pct_county_unique = mean(only_county) * 100,
-    state_unique_species = sum(only_state),
-    pct_state_unique = mean(only_state) * 100,
-    world_unique_species = sum(only_world)
-  )
-
-summary_metrics
-
-df_long <- records_value_summary %>%
-  dplyr::select(Species, `Osceola County`, Florida, All, deluca_bioblitz) %>%
-  pivot_longer(cols = c("Osceola County","Florida","All"),
-               names_to = "Region", values_to = "TotalObs") %>%
-  mutate(PropFromBioblitz = deluca_bioblitz / TotalObs)
-
-ggplot(df_long, aes(x = Region, y = PropFromBioblitz)) +
-  geom_boxplot(fill = "darkgreen", alpha = 0.6) +
-  geom_jitter(width = 0.1, alpha = 0.5) +
-  scale_y_continuous(labels = scales::percent) +
-  labs(y = "% of Observations from Bioblitz",
-       x = "Scale",
-       title = "Relative Contribution of DeLuca Bioblitz to Biodiversity Data") +
-  theme_minimal()
-
-
-records_value_summary %>%
-  mutate(rarity_class = case_when(
-    `Osceola County` <= 5 ~ "Very rare in county (≤5)",
-    `Osceola County` <= 20 ~ "Rare (6–20)",
-    TRUE ~ "Common (>20)"
-  )) %>%
-  count(rarity_class) %>%
-  ggplot(aes(x = rarity_class, y = n, fill = rarity_class)) +
-  geom_col(show.legend = FALSE) +
-  labs(x = "County Rarity Class",
-       y = "Number of Species Documented",
-       title = "Bioblitz Captures Many Rare Species") +
-  theme_minimal() +
-  coord_flip()
-
-
-
+ggsave("Figures/figure_3_accum_hist.png", plot = final_figure_3, bg = "transparent")
 
 ####################
 #### LPH addition
@@ -224,33 +151,61 @@ hex_summary <- bioblitz_joined %>%
 hex_summary_ll <- st_transform(hex_summary, 4326)
 
 ##############################################
-### Bivariate classification and mapping
+### Figure 2: Bivariate classification and mapping
+### Map DeLuca, add bivariate plot
 ##############################################
 
-# Classify both variables into quantile bins
-hex_bi <- bi_class(hex_summary_ll, x = n_obs, y = n_species, style = "quantile", dim = 3)
+# Create an expanded bbox around your hex layer
+bbox_orig <- st_bbox(hex_bi)  # or aerial_tracks_wgs84 if you prefer
+buffer <- 0.1
+bbox_expanded <- bbox_orig
+bbox_expanded["xmin"] <- bbox_expanded["xmin"] - buffer
+bbox_expanded["ymin"] <- bbox_expanded["ymin"] - buffer
+bbox_expanded["xmax"] <- bbox_expanded["xmax"] + buffer
+bbox_expanded["ymax"] <- bbox_expanded["ymax"] + buffer
 
-# Bivariate map with DeLuca boundary as underlay
-bi_map <- ggplot() +
-  geom_sf(data = deluca, fill = "gray95", color = "gray70") +
-  geom_sf(data = hex_bi, aes(fill = bi_class), color = "black", size = 0.3) +
+bbox_sfc <- st_as_sfc(bbox_expanded)
+
+# Download ESRI satellite imagery
+sat_map <- get_tiles(bbox_sfc, zoom = 15, provider = "Esri.WorldImagery", crop = TRUE)
+
+# Get the bounding box of Deluca
+deluca_bbox <- st_bbox(deluca)
+
+# Crop to bounding box first (faster), then mask to exact shape
+sat_cropped <- crop(sat_map, deluca)
+sat_masked  <- mask(sat_cropped, deluca)
+
+# Then plot using ggRGB on sat_masked instead
+bi_map_sat <- ggRGB(sat_masked, r = 1, g = 2, b = 3) +
+  geom_sf(data = hex_bi, aes(fill = bi_class), color = "black", size = 0.3, alpha = 1) +
+  geom_sf(data = deluca, fill = NA, color = "black", size = 1) +
   bi_scale_fill(pal = "DkViolet", dim = 3) +
-  annotation_north_arrow(location = "tl", which_north = "true",
+  annotation_scale(location = "bl", width_hint = 0.3,
+                   pad_x = unit(0.2, "in"), pad_y = unit(0.1, "in")) +
+  annotation_north_arrow(location = "bl", which_north = "true",
+                         pad_x = unit(0.2, "in"), pad_y = unit(0.2, "in"),
                          style = north_arrow_fancy_orienteering()) +
   labs(
-    title = "Bivariate Map of Observation Density and Species Richness",
-    subtitle = "DeLuca Preserve — 500m hexagons",
+    title = NULL,
+    subtitle = NULL,
     x = expression("Longitude ("*degree*W*")"),
     y = expression("Latitude ("*degree*N*")")
   ) +
-  theme_classic() +
+  coord_sf(
+    xlim = c(deluca_bbox["xmin"], deluca_bbox["xmax"]),
+    ylim = c(deluca_bbox["ymin"], deluca_bbox["ymax"])
+  ) +
+  theme_void() +
   theme(
     legend.position = "none",
-    axis.title = element_text(size = 14),
-    axis.text = element_text(size = 12, color = "black"),
     plot.title = element_text(size = 16, face = "bold"),
     plot.subtitle = element_text(size = 12)
   )
+
+bi_map_sat
+
+ggsave("Figures/figure_2_bivariate_map_deluca.png", plot = bi_map_sat, bg = "transparent")
 
 # Bivariate legend
 bi_legend <- bi_legend(
@@ -258,12 +213,82 @@ bi_legend <- bi_legend(
   dim = 3,
   xlab = "Higher Observation Density →",
   ylab = "↑ Higher Species Richness",
-  size = 10
+  size = 8
 )
+bi_legend
 
-# Combine map and legend
-bivariate_plot_final <- bi_map +
-  inset_element(bi_legend, left = 0.7, bottom = 0.7, right = 1, top = 1)
+ggsave("Figures/figure_2_bivariate_legend_deluca.png", plot = bi_legend, bg = "transparent")
 
-bivariate_plot_final
+##############################################
+### Figure 5: Comparison of DeLuca vs Random Polygons
+##############################################
+# Project to UTM for area calc (zone 17N for Florida)
+deluca_proj <- st_transform(deluca, 32617)
+
+# Area in km²
+deluca_area_km2 <- as.numeric(st_area(deluca_proj)) / 1e6
+
+# Normalize DeLuca values
+deluca_values_norm <- data.frame(
+  Observers_per_km2     = length(unique(deluca_bioblitz$user_id)) / deluca_area_km2,
+  Observations_per_km2  = nrow(deluca_bioblitz) / deluca_area_km2,
+  Species_per_km2       = deluca_bioblitz %>%
+    filter(quality_grade == "research", !is.na(taxon_species_name)) %>%
+    distinct(taxon_species_name) %>%
+    nrow() / deluca_area_km2
+) %>%
+  pivot_longer(cols = everything(), names_to = "Metric", values_to = "Value") %>%
+  mutate(Source = "DeLuca Bioblitz")
+
+########## let's do some context of how DeLuca 'performs' to 100 random polygons
+
+# Normalize random polygons
+# Join random polygon table with shapefile if not already
+random_values_norm <- random_polygon_effort %>%
+  dplyr::select(polygon_id, number_of_observations, number_of_observers, number_of_species) %>%
+  mutate(
+    Observers_per_km2    = number_of_observers / deluca_area_km2,
+    Observations_per_km2 = number_of_observations / deluca_area_km2,
+    Species_per_km2      = number_of_species / deluca_area_km2
+  ) %>%
+  select(polygon_id, Observers_per_km2, Observations_per_km2, Species_per_km2) %>%
+  pivot_longer(cols = c("Observers_per_km2","Observations_per_km2","Species_per_km2"),
+               names_to = "Metric", values_to = "Value") %>%
+  mutate(Source = "Random Polygons")
+
+# Combine datasets
+combined_values <- bind_rows(deluca_values_norm, random_values_norm)
+
+# Plot (violin + boxplot + DeLuca point overlay)
+fig_5 <- combined_values %>%
+  ggplot(aes(x = Metric, y = Value)) +
+  geom_violin(
+    data = subset(combined_values, Source == "Random Polygons"),
+    fill = "gray80", color = "black", alpha = 0.6
+  ) +
+  geom_boxplot(
+    data = subset(combined_values, Source == "Random Polygons"),
+    width = 0.15, outlier.shape = NA, alpha = 0.8
+  ) +
+  geom_point(
+    data = subset(combined_values, Source == "DeLuca Bioblitz"),
+    aes(color = Source), size = 4, shape = 18
+  ) +
+  scale_y_log10() + 
+  labs(
+    title = NULL,
+    x = "",
+    y = "Value (log-scaled)"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text = element_text(color = "black", size = 12),
+    axis.title.y = element_text(size = 14),
+    plot.title = element_text(size = 16, face = "bold"),
+    legend.position = "none"
+  )
+
+ggsave("Figures/figure_5_biodiversity_metrics_random_poly.png", plot = fig_5, bg = "transparent")
+
+
 
