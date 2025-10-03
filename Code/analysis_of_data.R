@@ -11,6 +11,7 @@ library(ggspatial)
 library(RStoolbox)
 library(maptiles)
 library(terra)
+library(scales)
 
 # read in data
 random_polygon_effort <- read_csv("Data/Summarized_Data/random_polygon_effort.csv")
@@ -289,6 +290,5 @@ fig_5 <- combined_values %>%
   )
 
 ggsave("Figures/figure_5_biodiversity_metrics_random_poly.png", plot = fig_5, bg = "transparent")
-
 
 

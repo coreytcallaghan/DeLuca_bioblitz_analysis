@@ -12,6 +12,9 @@ library(ggrepel)
 # Read in the bioblitz data
 deluca_bioblitz <- read_csv("Data/DeLuca_iNaturalist_Data/deluca_bioblitz_obs.csv")
 
+# Read in total iNat data with just counts
+regional_species_counts <- read_csv("Data/Summarized_Data/regional_species_counts.csv")
+
 ## Get number of unique observers
 unique(deluca_bioblitz$user_login) #203
 unique(deluca_bioblitz$observed_on) #5, but 2023 is broken into the 24th and 25th (3 observations)
@@ -193,7 +196,7 @@ freq_df <- deluca_freq %>%
   mutate(
     freq_ratio_deluca  = obs_deluca / obs_florida,
     freq_ratio_florida = obs_florida / obs_deluca,
-    deluca_only        = (obs_deluca == obs_florida),  # equal counts = only seen at DeLuca within filtered data
+    deluca_only        = (obs_deluca == obs_florida),
     category = case_when(
       deluca_only ~ "Unique to DeLuca",
       freq_ratio_deluca > 0.25 & freq_ratio_florida <= 0.25 ~ "Locally Rare",
@@ -203,7 +206,7 @@ freq_df <- deluca_freq %>%
     )
   )
 
-# Labeling logic: Top 5 statewide + all DeLuca-only + all Rare Everywhere
+# Label top 5 statewide + all DeLuca-only + all Rare Everywhere
 label_points <- freq_df %>%
   arrange(desc(freq_ratio_florida)) %>%
   slice_head(n = 5) %>%
@@ -248,159 +251,51 @@ freq_plot_prop
 ## save as png
 ggsave("Figures/figure_4_rarity_deluca_state.png", plot = freq_plot_prop, bg = "transparent")
 
-
-##################
-##### Repeat, but use obs and not proportions
-#################
-# Combine counts
-freq_df_obs <- deluca_freq %>%
-  left_join(inat_freq, by = "scientific_name") %>%
+###############################
+###### OR how it performs total
+## This is just count data
+###############################
+plot_df <- regional_species_counts %>%
   mutate(
-    deluca_only = (obs_deluca == obs_florida)
-  )
-
-# Quadrant classification based on total observation thresholds
-freq_df_obs <- freq_df_obs %>%
+    Prop_DeLuca = 1,
+    Prop_Osceola = deluca_bioblitz / `Osceola County`,
+    Prop_Florida = deluca_bioblitz / Florida,
+    Prop_All = deluca_bioblitz / All
+  ) %>%
+  select(Species, Prop_DeLuca, Prop_Osceola, Prop_Florida, Prop_All) %>%
+  pivot_longer(
+    cols = starts_with("Prop"),
+    names_to = "Group",
+    values_to = "Proportion"
+  ) %>%
   mutate(
-    category = case_when(
-      obs_deluca == obs_florida ~ "Unique to DeLuca", 
-      obs_deluca <= 10 & obs_florida <= 50 ~ "Rare Everywhere",
-      obs_deluca <= 10 & obs_florida > 50 ~ "Locally Rare",
-      obs_deluca > 10 & obs_florida <= 50 ~ "Common in DeLuca, Rare Statewide",
-      obs_deluca > 10 & obs_florida > 50 ~ "Common Everywhere",
-      TRUE ~ "Underreported Everywhere"
-    )
-  )
-
-
-# Identify top 5 species for Florida
-top_florida_obs <- freq_df_obs %>% 
-  arrange(desc(obs_florida)) %>% 
-  slice_head(n = 5)
-
-# Identify top 5 species for DeLuca
-top_deluca_obs <- freq_df_obs %>%
-  arrange(desc(obs_deluca)) %>%
-  slice_head(n = 5)
-
-# Identify top 5 species that are rare everywhere
-top_rare_everywhere <- freq_df_obs %>%
-  filter(category == "Rare Everywhere") %>%
-  arrange(obs_florida) %>%
-  slice_head(n = 5)
-
-# Filter species for labeling: top 5 rare everywhere + all unique to DeLuca
-label_points <- freq_df_obs %>%
-  filter(
-    category == "Unique to DeLuca" |
-      scientific_name %in% top_rare_everywhere$scientific_name |
-      scientific_name %in% top_florida_obs$scientific_name |
-      scientific_name %in% top_deluca_obs$scientific_name
+    Group = factor(Group, 
+                   levels = c("Prop_DeLuca", "Prop_Osceola", "Prop_Florida", "Prop_All"),
+                   labels = c("DeLuca", "Osceola County", "Florida (All)", "All"))
   )
 
 # Plot
-freq_plot_obs <- ggplot(freq_df_obs, aes(x = obs_florida, y = obs_deluca, color = category)) +
-  geom_jitter(alpha = 1) +
-  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black", linewidth = 1) +
-  geom_text_repel(
-    data = label_points,
-    aes(label = scientific_name),
-    inherit.aes = TRUE,
-    size = 3,
-    fontface = "bold",
-    max.overlaps = Inf,
-    na.rm = TRUE
+ggplot(plot_df, aes(x = Group, y = Proportion)) +
+  geom_boxplot(fill = "darkgreen", alpha = 1, width = 0.6, outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.7, color = "black", size = 1.8) +
+  scale_y_continuous(
+    trans = pseudo_log_trans(base = 10, sigma = 1e-4),
+    breaks = c(0, 0.001, 0.01, 0.1, 0.5, 1),
+    labels = c("0", "0.001", "0.01", "0.1", "0.5", "1"),
+    limits = c(0, 1)
   ) +
+  theme_minimal(base_size = 14) +
   labs(
-    x = "Statewide Observations",
-    y = "DeLuca Observations",
-    color = "Category",
-    caption = "Dashed line = 1:1 frequency"
+    title = NULL,
+    x = "",
+    y = "Proportion of Records from DeLuca"
   ) +
-  scale_x_log10(labels = scales::label_number(accuracy = 1)) +
-  scale_y_log10(labels = scales::label_number(accuracy = 1)) +
-  scale_color_manual(
-    values = c(
-      "Unique to DeLuca" = "#D73027",
-      "Rare Everywhere" = "#FC8D59",
-      "Locally Rare" = "#467010",
-      "Common in DeLuca, Rare Statewide" = "#FEE08B",
-      "Common Everywhere" = "#4575B4",
-      "Underreported Everywhere" = "#999999"
-    )
-  ) +
-  theme_minimal() +
   theme(
-    panel.background = element_blank(),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    axis.line = element_line(color = "black")
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    axis.text.x = element_text(angle = 15, hjust = 0.5)
   )
 
-freq_plot_obs
-
-## save as png
-ggsave("Figures/figure_4_rarity_deluca_state_obs.png", plot = freq_plot_obs, bg = "transparent")
-
-#### Now repeat but with a linear model
-# Fit linear model
-lm_obs <- lm(obs_deluca ~ obs_florida, data = freq_df_obs)
-
-# Add residuals to the df
-freq_df_obs <- freq_df_obs %>%
-  mutate(residuals = resid(lm_obs))
-
-# label points -- same as above
-label_points <- freq_df_obs %>%
-  filter(
-    category == "Unique to DeLuca" |
-      scientific_name %in% top_rare_everywhere$scientific_name |
-      scientific_name %in% top_florida_obs$scientific_name |
-      scientific_name %in% top_deluca_obs$scientific_name
-  )
-
-# Plot residuals
-residual_plot <- ggplot(freq_df_obs, aes(x = obs_florida, y = residuals, color = category)) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
-  geom_jitter(alpha = 3) +
-  geom_point(alpha = 1) +
-  geom_text_repel(
-    data = label_points,
-    aes(label = scientific_name),
-    inherit.aes = TRUE,
-    size = 3,
-    fontface = "bold",
-    max.overlaps = Inf
-  ) +
-  labs(
-    x = "Statewide Observations",
-    y = "Residuals (DeLuca - predicted)",
-    color = "Category",
-    caption = "Residuals from linear model: obs_deluca ~ obs_florida"
-  ) +
-  scale_x_log10(labels = scales::label_number(accuracy = 1)) +
-  theme_minimal() +
-  theme(
-    panel.background = element_blank(),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    axis.line = element_line(color = "black")
-  ) +
-  scale_color_manual(
-    values = c(
-      "Unique to DeLuca" = "#D73027",
-      "Rare Everywhere" = "#FC8D59",
-      "Locally Rare" = "#467010",
-      "Common in DeLuca, Rare Statewide" = "#FEE08B",
-      "Common Everywhere" = "#4575B4",
-      "Underreported Everywhere" = "#999999"
-    )
-  )
-
-residual_plot
-
-ggsave("Figures/figure_4_lm_deluca_residuals_rarity.png", plot = residual_plot, bg = "transparent")
-
+ggsave("Figures/figure_4b_deluca_rarity_total_obs_global.png", bg = "transparent")
 
 
 ############################
