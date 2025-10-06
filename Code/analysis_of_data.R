@@ -166,7 +166,7 @@ hex_bi <- bi_class(
 )
 
 # Create an expanded bbox around your hex layer
-bbox_orig <- st_bbox(hex_bi)  # or aerial_tracks_wgs84 if you prefer
+bbox_orig <- st_bbox(hex_bi) 
 buffer <- 0.1
 bbox_expanded <- bbox_orig
 bbox_expanded["xmin"] <- bbox_expanded["xmin"] - buffer
@@ -183,11 +183,22 @@ sat_map <- get_tiles(bbox_sfc, zoom = 15, provider = "Esri.WorldImagery", crop =
 deluca_bbox <- st_bbox(deluca)
 
 # Crop to bounding box first, then mask to exact shape
+
+
 sat_cropped <- crop(sat_map, deluca)
 sat_masked  <- mask(sat_cropped, deluca)
+plot(sat_masked)
+
+# Convert the raster to a data frame
+sat_masked_df <- as.data.frame(sat_masked, xy = TRUE)
+
+# Rename the columns for clarity (x, y, R, G, B)
+names(sat_masked_df) <- c("x", "y", "R", "G", "B")
+
 
 # Then plot using ggRGB on sat_masked instead
-bi_map_sat <- ggRGB(sat_masked, r = 1, g = 2, b = 3) +
+bi_map_sat <- ggplot() +
+  geom_raster(data = sat_masked_df, aes(x = x, y = y), fill = rgb(sat_masked_df$R, sat_masked_df$G, sat_masked_df$B, maxColorValue = 255)) +
   geom_sf(data = hex_bi, aes(fill = bi_class), color = "black", size = 0.3, alpha = 1) +
   geom_sf(data = deluca, fill = NA, color = "black", size = 1) +
   bi_scale_fill(pal = "DkViolet", dim = 3) +
