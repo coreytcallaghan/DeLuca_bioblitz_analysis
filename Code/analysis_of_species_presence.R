@@ -1,6 +1,6 @@
 # Analysis of observations, observers, and quantification of bioblitz
-# Levi Hoskins
-# 7 Aug 2025
+## This script includes figure 4, the supplementary figures for bar and pie plots about taxonomy
+## It also includes shannon's index and a way to visualize uniqueness at DeLuca
 
 library(tidyverse)
 library(patchwork)
@@ -230,6 +230,7 @@ freq_plot_prop <- ggplot(freq_df, aes(x = obs_deluca, y = freq_ratio_deluca, col
     color = "Category"
   ) +
   theme_minimal() +
+  scale_x_log10() +
   theme(
     panel.background = element_blank(),
     panel.grid.major = element_blank(),
@@ -254,8 +255,9 @@ ggsave("Figures/figure_4_rarity_deluca_state.png", plot = freq_plot_prop, bg = "
 ###############################
 ###### OR how it performs total
 ## This is just count data
+## Supplementary Figure
 ###############################
-plot_df <- regional_species_counts %>%
+regional_counts <- regional_species_counts %>%
   mutate(
     Prop_DeLuca = 1,
     Prop_Osceola = deluca_bioblitz / `Osceola County`,
@@ -275,7 +277,7 @@ plot_df <- regional_species_counts %>%
   )
 
 # Plot
-ggplot(plot_df, aes(x = Group, y = Proportion)) +
+regional_counts_plot <- ggplot(regional_counts, aes(x = Group, y = Proportion)) +
   geom_boxplot(fill = "darkgreen", alpha = 1, width = 0.6, outlier.shape = NA) +
   geom_jitter(width = 0.15, alpha = 0.7, color = "black", size = 1.8) +
   scale_y_continuous(
@@ -295,7 +297,10 @@ ggplot(plot_df, aes(x = Group, y = Proportion)) +
     axis.text.x = element_text(angle = 15, hjust = 0.5)
   )
 
-ggsave("Figures/figure_4b_deluca_rarity_total_obs_global.png", bg = "transparent")
+regional_counts_plot
+
+ggsave("Figures/Supp/deluca_rarity_total_obs_global.png", plot = regional_counts_plot, bg = "transparent")
+
 
 
 ############################
@@ -381,6 +386,11 @@ df_plot <- tibble(
   )
 )
 
+#######################################
+## Possible supplementary figure to show
+## more rarity anaylysis
+#####################################
+
 # Plot
 ggplot(df_plot, aes(x = Region, y = PropFlorida)) +
   geom_col(fill = "darkgreen", alpha = 1) +
@@ -435,26 +445,16 @@ deluca_counts %>%
   theme_minimal() +
   coord_flip()
 
-
-
-
-
-
-
-
-
-
 ######################
 # Supplementary figures
 # Visualizing the groups of species found
-# For DeLuca only, not Florida
+# For DeLuca only
 ######################
-
 
 #######################
 ### Bar plot
 ######################
-#### similar to sam's to show taxonomy totals
+#### to show taxonomy totals
 ## chosen birds, plants, and insects --- although any other works as well
 
 ### Total unique species by Kingdom
@@ -540,6 +540,7 @@ final_plot_bar <- phylum_plot | side_column +
 # Display
 final_plot_bar
 
+ggsave("Figures/Supp/bar_plot_species_group.png", plot = final_plot_bar, bg = "transparent")
 
 ####################
 ### Pie Chart
@@ -681,4 +682,5 @@ final_pie_plot_pretty <- (phylum_pie | plant_class_pie) / (insect_order_pie | bi
 
 final_pie_plot_pretty
 
+ggsave("Figures/Supp/pie_plot_species_group.png", plot = final_pie_plot_pretty, bg = "transparent")
 

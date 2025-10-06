@@ -23,9 +23,8 @@ distance_to_nearest_obs <- read_csv("Data/Summarized_Data/distance_to_nearest_ob
 # Read in the bioblitz data
 deluca_bioblitz <- read_csv("Data/DeLuca_iNaturalist_Data/deluca_bioblitz_obs.csv")
 
-# analysis of bioblitz data
+# quick summarization of bioblitz data
 length(unique(deluca_bioblitz$observed_on))
-
 unique(deluca_bioblitz$observed_on)
 
 ##########################################
@@ -156,6 +155,16 @@ hex_summary_ll <- st_transform(hex_summary, 4326)
 ### Map DeLuca, add bivariate plot
 ##############################################
 
+# Create bivariate classification
+# Adjust 'style' or 'dim' as needed
+hex_bi <- bi_class(
+  hex_summary_ll,
+  x = n_obs,
+  y = n_species,
+  style = "quantile",
+  dim = 3
+)
+
 # Create an expanded bbox around your hex layer
 bbox_orig <- st_bbox(hex_bi)  # or aerial_tracks_wgs84 if you prefer
 buffer <- 0.1
@@ -173,7 +182,7 @@ sat_map <- get_tiles(bbox_sfc, zoom = 15, provider = "Esri.WorldImagery", crop =
 # Get the bounding box of Deluca
 deluca_bbox <- st_bbox(deluca)
 
-# Crop to bounding box first (faster), then mask to exact shape
+# Crop to bounding box first, then mask to exact shape
 sat_cropped <- crop(sat_map, deluca)
 sat_masked  <- mask(sat_cropped, deluca)
 
@@ -223,6 +232,7 @@ ggsave("Figures/figure_2_bivariate_legend_deluca.png", plot = bi_legend, bg = "t
 ##############################################
 ### Figure 5: Comparison of DeLuca vs Random Polygons
 ##############################################
+########## let's do some context of how DeLuca 'performs' to 100 random polygons
 # Project to UTM for area calc (zone 17N for Florida)
 deluca_proj <- st_transform(deluca, 32617)
 
@@ -240,8 +250,6 @@ deluca_values_norm <- data.frame(
 ) %>%
   pivot_longer(cols = everything(), names_to = "Metric", values_to = "Value") %>%
   mutate(Source = "DeLuca Bioblitz")
-
-########## let's do some context of how DeLuca 'performs' to 100 random polygons
 
 # Normalize random polygons
 # Join random polygon table with shapefile if not already
@@ -291,4 +299,24 @@ fig_5 <- combined_values %>%
 
 ggsave("Figures/figure_5_biodiversity_metrics_random_poly.png", plot = fig_5, bg = "transparent")
 
+# Perform a one-sample t-test: compare DeLuca value to random polygon distribution
+results_t_test <- combined_values %>%
+  group_by(Metric) %>%
+  group_modify(~ {
+    deluca_val <- .x %>% filter(Source == "DeLuca Bioblitz") %>% pull(Value)
+    random_vals <- .x %>% filter(Source == "Random Polygons") %>% pull(Value)
+    t_res <- t.test(random_vals, mu = deluca_val)
+    tibble(
+      Metric = unique(.x$Metric),
+      DeLuca_Value = deluca_val,
+      Random_Mean = mean(random_vals),
+      Random_SD = sd(random_vals),
+      t_statistic = t_res$statistic,
+      df = t_res$parameter,
+      p_value = t_res$p.value
+    )
+  }) %>%
+  ungroup()
+
+results_t_test
 
