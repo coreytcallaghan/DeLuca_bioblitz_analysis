@@ -15,12 +15,9 @@ library(scales)
 
 # read in data
 random_polygon_effort <- read_csv("Data/Summarized_Data/random_polygon_effort.csv")
-
-regional_species_counts <- read_csv("Data/Summarized_Data/regional_species_counts.csv")
-
+regional_species_counts <- read_csv("Data/Summarized_Data/regional_species_counts.csv") %>%
+  dplyr::filter(!is.na(Species))
 distance_to_nearest_obs <- read_csv("Data/Summarized_Data/distance_to_nearest_obs.csv")
-
-# Read in the bioblitz data
 deluca_bioblitz <- read_csv("Data/DeLuca_iNaturalist_Data/deluca_bioblitz_obs.csv")
 
 # quick summarization of bioblitz data
@@ -31,34 +28,56 @@ unique(deluca_bioblitz$observed_on)
 ### Making figure 3, both left and right
 ## Species accumulation curve and frequency distribution
 ########################################
+# make a histogram of all species observed
+species_hist_all <- deluca_bioblitz %>%
+  dplyr::select(taxon_species_name, quality_grade) %>%
+  dplyr::filter(complete.cases(taxon_species_name)) %>%
+  group_by(taxon_species_name) %>%
+  summarize(N = n())
 
-# Histogram of all species
-species_hist_plot_all <- ggplot(species_hist_all, aes(x=N)) +
-  geom_histogram(color="black", fill="gray80") +
+species_hist_plot_all <- ggplot(species_hist_all, aes(x = N)) +
+  geom_histogram(color = "black", fill = "gray80") +
   theme_bw() +
   theme(
     panel.grid = element_blank(),
-    panel.border = element_rect(color="black", fill=NA),
-    axis.text = element_text(color="black")
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text = element_text(color = "black")
   ) +
   xlab("Number of observations") +
   ylab("Number of species (RG + Needs ID)")
 
-# Histogram of RG species only
-species_hist_plot_RG <- ggplot(species_hist_RG, aes(x=N)) +
-  geom_histogram(color="black", fill="gray80") +
+# make a histogram of RG species observed only
+species_hist_RG <- deluca_bioblitz %>%
+  dplyr::select(taxon_species_name, quality_grade) %>%
+  dplyr::filter(quality_grade == "research") %>%
+  dplyr::filter(complete.cases(taxon_species_name)) %>%
+  group_by(taxon_species_name) %>%
+  summarize(N = n())
+
+species_hist_plot_RG <- ggplot(species_hist_RG, aes(x = N)) +
+  geom_histogram(color = "black", fill = "gray80") +
   theme_bw() +
   theme(
     panel.grid = element_blank(),
-    panel.border = element_rect(color="black", fill=NA),
-    axis.text = element_text(color="black")
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text = element_text(color = "black")
   ) +
   xlab("Number of observations") +
   ylab("Number of species (RG)")
 
-# Accumulation plot for all species
+# plot an accumulation type plot of new species
+first_obs_species_all <- deluca_bioblitz %>%
+  dplyr::select(taxon_genus_name, taxon_species_name, observed_on, quality_grade) %>%
+  dplyr::filter(complete.cases(taxon_species_name)) %>%
+  group_by(taxon_species_name, observed_on) %>%
+  arrange(desc(observed_on)) %>%
+  distinct() %>%
+  group_by(observed_on) %>%
+  summarise(new_species = n_distinct(taxon_species_name), .groups = "drop") %>%
+  mutate(cumulative_species = cumsum(new_species))
+
 accum_all_plot <- ggplot(first_obs_species_all, aes(x = observed_on)) +
-  geom_col(aes(y = new_species), fill = "steelblue", alpha = 0.6, width=4) +
+  geom_col(aes(y = new_species), fill = "steelblue", alpha = 0.6, width = 4) +
   geom_line(aes(y = cumulative_species), color = "darkgreen", size = 1.2) +
   geom_point(aes(y = cumulative_species), size = 2, color = "darkgreen") +
   xlab("Sampling Date") +
@@ -66,13 +85,25 @@ accum_all_plot <- ggplot(first_obs_species_all, aes(x = observed_on)) +
   theme_bw() +
   theme(
     panel.grid = element_blank(),
-    panel.border = element_rect(color="black", fill=NA),
-    axis.text = element_text(color="black")
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text = element_text(color = "black")
   )
 
-# Accumulation plot for RG only
+# plot an accumulation type plot of new species
+# now for RG only!
+first_obs_species_RG <- deluca_bioblitz %>%
+  dplyr::select(taxon_genus_name, taxon_species_name, observed_on, quality_grade) %>%
+  dplyr::filter(quality_grade == "research") %>%
+  dplyr::filter(complete.cases(taxon_species_name)) %>%
+  group_by(taxon_species_name, observed_on) %>%
+  arrange(desc(observed_on)) %>%
+  distinct() %>%
+  group_by(observed_on) %>%
+  summarise(new_species = n_distinct(taxon_species_name), .groups = "drop") %>%
+  mutate(cumulative_species = cumsum(new_species))
+
 accum_RG_plot <- ggplot(first_obs_species_RG, aes(x = observed_on)) +
-  geom_col(aes(y = new_species), fill = "black", alpha = 1, width=4) +
+  geom_col(aes(y = new_species), fill = "black", alpha = 1, width = 4) +
   geom_line(aes(y = cumulative_species), color = "darkgreen", size = 1.2) +
   geom_point(aes(y = cumulative_species), size = 2, color = "darkgreen") +
   xlab("Sampling Date") +
@@ -80,15 +111,15 @@ accum_RG_plot <- ggplot(first_obs_species_RG, aes(x = observed_on)) +
   theme_bw() +
   theme(
     panel.grid = element_blank(),
-    panel.border = element_rect(color="black", fill=NA),
-    axis.text = element_text(color="black")
+    panel.border = element_rect(color = "black", fill = NA),
+    axis.text = element_text(color = "black")
   )
 
 #### Final figure 3
 final_figure_3 <- species_hist_plot_RG + accum_RG_plot
 final_figure_3
 
-ggsave("Figures/figure_3_accum_hist.png", plot = final_figure_3, bg = "transparent")
+ggsave("Figures/figure_3_accum_hist.png", plot = final_figure_3, bg = "transparent", width = 10, height = 5, dpi = 300)
 
 ####################
 #### LPH addition
