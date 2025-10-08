@@ -25,7 +25,7 @@ deluca_proj <- st_transform(deluca_sf, proj_crs)
 florida_proj <- st_transform(florida_sf, proj_crs)
 florida_union <- st_union(florida_proj)
 
-# get the area of deluca to ensure that random squiares are teh same size as deluca
+# get the area of deluca to ensure that random squares are the same size as deluca
 target_area <- as.numeric(st_area(deluca_proj))
 side_length <- sqrt(target_area)
 half_side <- side_length / 2

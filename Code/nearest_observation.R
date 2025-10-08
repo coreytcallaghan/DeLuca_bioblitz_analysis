@@ -149,3 +149,9 @@ nearest_obs_all <- rbind(nearest_obs, nearest_obs_add)
 
 # write the data
 write_csv(nearest_obs_all, "Data/Summarized_Data/distance_to_nearest_obs.csv")
+
+# summary of data
+nearest_obs_all <- read_csv("Data/Summarized_Data/distance_to_nearest_obs.csv")
+
+summary(nearest_obs_all$dist_to_deluca)
+View(nearest_obs_all)
