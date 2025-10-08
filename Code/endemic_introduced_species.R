@@ -57,7 +57,13 @@ cumul_plot_endemic_invasive <- ggplot(
   ) +
   theme_minimal(base_size = 14) +
   theme(
-    panel.grid = element_blank() 
+    panel.grid = element_blank(), 
+    axis.line = element_line(color = "black"),
+    legend.position = "bottom", 
+    legend.direction = "horizontal",
+    legend.box = "horizontal",
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11)
   )
 
 # View the plot

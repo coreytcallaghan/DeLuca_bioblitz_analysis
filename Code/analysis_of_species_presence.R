@@ -12,8 +12,9 @@ library(ggrepel)
 # Read in the bioblitz data
 deluca_bioblitz <- read_csv("Data/DeLuca_iNaturalist_Data/deluca_bioblitz_obs.csv")
 
-# Read in total iNat data with just counts
-regional_species_counts <- read_csv("Data/Summarized_Data/regional_species_counts.csv")
+# Read in total iNat data with just counts and remove nas
+regional_species_counts <- read_csv("Data/Summarized_Data/regional_species_counts.csv") %>%
+  dplyr::filter(!is.na(Species))
 
 ## Get number of unique observers
 unique(deluca_bioblitz$user_login) #203
@@ -46,7 +47,7 @@ o_productivity <- ggplot(observer_summary, aes(x = n_obs, fill = top_5)) +
     position = "identity"
   ) +
   scale_fill_manual(
-    values = c("FALSE" = "grey50", "TRUE" = "tomato"),
+    values = c("FALSE" = "grey50", "TRUE" = "#1f78b4"),
     labels = c("Other Observers", "Top 5% Observers"),
     name = NULL
   ) +
@@ -65,10 +66,13 @@ o_productivity <- ggplot(observer_summary, aes(x = n_obs, fill = top_5)) +
     plot.subtitle = element_text(size = 12, margin = margin(b = 10)),
     axis.title = element_text(size = 14),
     axis.text = element_text(color = "black", size = 12),
+    panel.grid.major = element_blank(), 
     panel.grid.minor = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
     legend.position = "top",
     legend.text = element_text(size = 12)
   )
+
 o_productivity
 
 ggsave("Figures/Supp/observer_productivity.png", o_productivity, height = 6, width = 8, bg= "transparent")
@@ -173,26 +177,22 @@ inat_combined_research <- readRDS("Data/Florida_Data/inat_combined_research.RDS"
 
 
 #######################
-## Prepare figure 4 for 
-## rarity of species in DeLuca
-## Three different ways
-# 1 is proportion for species
-# 2 is observations + proportions
-# 3 is lm and residuals
+## Prepare figure 5 for 
+## rarity of species in DeLucao
 #######################
 ### Prepare relative observation ratio per species
 # Count occurrences in DeLuca
 deluca_freq <- deluca_bioblitz_research %>%
-  count(scientific_name, name = "obs_deluca")
+  count(taxon_species_name, name = "obs_deluca")
 
 # Count occurrences in Florida (restricted to species observed at DeLuca)
 inat_freq <- inat_combined_research %>%
-  filter(scientific_name %in% deluca_freq$scientific_name) %>%
-  count(scientific_name, name = "obs_florida")
+  filter(taxon_species_name %in% deluca_freq$taxon_species_name) %>%
+  count(taxon_species_name, name = "obs_florida")
 
 # Merge & compute proportions
 freq_df <- deluca_freq %>%
-  left_join(inat_freq, by = "scientific_name") %>%
+  left_join(inat_freq, by = "taxon_species_name") %>%
   mutate(
     freq_ratio_deluca  = obs_deluca / obs_florida,
     freq_ratio_florida = obs_florida / obs_deluca,
@@ -208,19 +208,21 @@ freq_df <- deluca_freq %>%
 
 # Label top 5 statewide + all DeLuca-only + all Rare Everywhere
 label_points <- freq_df %>%
-  arrange(desc(freq_ratio_florida)) %>%
+  arrange(desc(obs_deluca)) %>%   
   slice_head(n = 5) %>%
   bind_rows(freq_df %>% filter(deluca_only | category == "Rare Everywhere")) %>%
-  distinct(scientific_name, .keep_all = TRUE)
+  distinct(taxon_species_name, .keep_all = TRUE)
 
 ### Plot
 freq_plot_prop <- ggplot(freq_df, aes(x = obs_deluca, y = freq_ratio_deluca, color = category)) +
   geom_point(alpha = 1, size = 3) +
+  geom_jitter() +
   geom_text_repel(
     data = label_points,
-    aes(label = scientific_name),
+    aes(label = taxon_species_name),
     size = 3,
     fontface = "bold",
+    color = "black",
     max.overlaps = Inf,
     na.rm = TRUE
   ) +
@@ -229,28 +231,68 @@ freq_plot_prop <- ggplot(freq_df, aes(x = obs_deluca, y = freq_ratio_deluca, col
     y = "Proportion of DeLuca / Florida observations",
     color = "Category"
   ) +
-  theme_minimal() +
   scale_x_log10() +
-  theme(
-    panel.background = element_blank(),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    axis.line = element_line(color = "black")
-  ) +
   scale_color_manual(
     values = c(
-      "Unique to DeLuca" = "#D73027",
-      "Locally Rare" = "#FC8D59",
-      "Rare Everywhere" = "#467010",
-      "Common Everywhere" = "#4575B4",
-      "Underreported Everywhere" = "#FEE08B"
+      "Unique to DeLuca" = "#d95f02",
+      "Locally Rare" = "#7570b3", 
+      "Rare Everywhere" = "#1b9e77",
+      "Common Everywhere" = "#1f78b4",
+      "Underreported Everywhere" = "#e6ab02" 
     )
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black", linewidth = 0.6),
+    legend.position = "bottom", 
+    legend.direction = "horizontal",
+    legend.box = "horizontal",
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11)
   )
 
 freq_plot_prop
 
 ## save as png
-ggsave("Figures/figure_4_rarity_deluca_state.png", plot = freq_plot_prop, bg = "transparent")
+ggsave("Figures/figure_5_rarity_deluca_state.png", plot = freq_plot_prop, bg = "transparent")
+
+
+#### Now same figure
+### without labels
+### Plot
+freq_plot_prop_clean <- ggplot(freq_df, aes(x = obs_deluca, y = freq_ratio_deluca, color = category)) +
+  geom_jitter(size = 2.5, alpha = 0.75, width = 0.05, height = 0) + 
+  labs(
+    x = "DeLuca Observations (total count)",
+    y = "Proportion of DeLuca / Florida observations",
+    color = "Category"
+  ) +
+  scale_x_log10() +
+  scale_color_manual(
+    values = c(
+      "Unique to DeLuca" = "#d95f02",
+      "Locally Rare" = "#7570b3", 
+      "Rare Everywhere" = "#1b9e77",
+      "Common Everywhere" = "#1f78b4",
+      "Underreported Everywhere" = "#e6ab02" 
+    )
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black", linewidth = 0.6),
+    legend.position = "bottom", 
+    legend.direction = "horizontal",
+    legend.box = "horizontal",
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11)
+  )
+
+freq_plot_prop_clean
+
+## save as png
+ggsave("Figures/figure_5_rarity_deluca_state_clean.png", plot = freq_plot_prop_clean, bg = "transparent")
 
 ###############################
 ###### OR how it performs total
@@ -278,8 +320,8 @@ regional_counts <- regional_species_counts %>%
 
 # Plot
 regional_counts_plot <- ggplot(regional_counts, aes(x = Group, y = Proportion)) +
-  geom_boxplot(fill = "darkgreen", alpha = 1, width = 0.6, outlier.shape = NA) +
-  geom_jitter(width = 0.15, alpha = 0.7, color = "black", size = 1.8) +
+  geom_boxplot(fill = "#1f78b4", alpha = 1, width = 0.6, outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.5, color = "black", size = 1.8) +
   scale_y_continuous(
     trans = pseudo_log_trans(base = 10, sigma = 1e-4),
     breaks = c(0, 0.001, 0.01, 0.1, 0.5, 1),
@@ -294,14 +336,14 @@ regional_counts_plot <- ggplot(regional_counts, aes(x = Group, y = Proportion)) 
   ) +
   theme(
     plot.title = element_text(face = "bold", hjust = 0.5),
-    axis.text.x = element_text(angle = 15, hjust = 0.5)
+    axis.text.x = element_text(angle = 15, hjust = 0.5),
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, size = 1)
   )
 
 regional_counts_plot
 
 ggsave("Figures/Supp/deluca_rarity_total_obs_global.png", plot = regional_counts_plot, bg = "transparent")
-
-
 
 ############################
 ## Quantify iNat data with Shannon's
@@ -313,7 +355,6 @@ ggsave("Figures/Supp/deluca_rarity_total_obs_global.png", plot = regional_counts
 deluca_counts <- deluca_bioblitz_research %>%
   count(taxon_species_name) %>%
   pull(n)
-
 shannon_deluca <- diversity(deluca_counts, index = "shannon")
 
 ## Florida Shannon Index 6.819194
@@ -321,7 +362,7 @@ fl_counts <- inat_combined_research %>%
   count(taxon_species_name) %>%
   pull(n)
 
-shannon_florida <- diversity(fl_counts, index = "shannon")
+shanon_florida <- diversity(fl_counts, index = "shannon")
 
 
 # now think about valuable observations (in terms of rarity)
@@ -357,6 +398,11 @@ summary_metrics <- records_value_summary %>%
 
 summary_metrics
 
+#######################################
+## Possible supplementary figure to show
+## more rarity anaylysis
+### with summary metrics
+#####################################
 # Identify species unique to DeLuca
 records_value_summary <- records_value_summary %>%
   mutate(unique_to_deluca = deluca_bioblitz & !osceola_county & !florida_state)
@@ -386,11 +432,6 @@ df_plot <- tibble(
   )
 )
 
-#######################################
-## Possible supplementary figure to show
-## more rarity anaylysis
-#####################################
-
 # Plot
 ggplot(df_plot, aes(x = Region, y = PropFlorida)) +
   geom_col(fill = "darkgreen", alpha = 1) +
@@ -402,28 +443,12 @@ ggplot(df_plot, aes(x = Region, y = PropFlorida)) +
   ) +
   theme_minimal()
 
-# County rarity classification for species in Osceola County
-county_counts <- inat_combined_research %>%
-  filter(place_county_name == "Osceola") %>%
-  count(taxon_species_name, name = "obs_count")
-
-county_counts %>%
-  mutate(rarity_class = case_when(
-    obs_count <= 5 ~ "Very rare in county (≤5)",
-    obs_count <= 20 ~ "Rare (6–20)",
-    TRUE ~ "Common (>20)"
-  )) %>%
-  count(rarity_class) %>%
-  ggplot(aes(x = rarity_class, y = n, fill = rarity_class)) +
-  geom_col(show.legend = FALSE) +
-  labs(
-    x = "County Rarity Class",
-    y = "Number of Species Documented",
-    title = NULL
-  ) +
-  theme_minimal() +
-  coord_flip()
-
+#######################################
+## Possible supplementary figure to show
+## more rarity anaylysis
+### with summary metrics
+### Visualizing number of rare species in DeLuca
+#####################################
 # Rarity classification for species in DeLuca Bioblitz
 deluca_counts <- deluca_bioblitz_research %>%
   count(taxon_species_name, name = "obs_count")
@@ -450,10 +475,7 @@ deluca_counts %>%
 # Visualizing the groups of species found
 # For DeLuca only
 ######################
-
-#######################
-### Bar plot
-######################
+### Bar Plot
 #### to show taxonomy totals
 ## chosen birds, plants, and insects --- although any other works as well
 
