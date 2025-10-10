@@ -175,7 +175,6 @@ deluca_bioblitz_research %>%
 ### Come back to this code 
 inat_combined_research <- readRDS("Data/Florida_Data/inat_combined_research.RDS")
 
-
 #######################
 ## Prepare figure 5 for 
 ## rarity of species in DeLucao
@@ -190,36 +189,46 @@ inat_freq <- inat_combined_research %>%
   filter(taxon_species_name %in% deluca_freq$taxon_species_name) %>%
   count(taxon_species_name, name = "obs_florida")
 
-# Merge & compute proportions
 freq_df <- deluca_freq %>%
   left_join(inat_freq, by = "taxon_species_name") %>%
   mutate(
-    freq_ratio_deluca  = obs_deluca / obs_florida,
-    freq_ratio_florida = obs_florida / obs_deluca,
-    deluca_only        = (obs_deluca == obs_florida),
+    deluca_only = (obs_deluca == obs_florida),
     category = case_when(
       deluca_only ~ "Unique to DeLuca",
-      freq_ratio_deluca > 0.25 & freq_ratio_florida <= 0.25 ~ "Locally Rare",
-      freq_ratio_deluca <= 0.25 & freq_ratio_florida > 0.25 ~ "Common Everywhere",
-      freq_ratio_deluca > 0.25 & freq_ratio_florida > 0.25 ~ "Rare Everywhere",
+      obs_deluca < 10 & obs_florida > 25 ~ "Locally Rare",  
+      obs_deluca > 10 & obs_florida > 25 ~ "Common Everywhere",
+      obs_deluca < 10 & obs_florida <= 25 ~ "Rare Everywhere",
       TRUE ~ "Underreported Everywhere"
     )
   )
 
+# Recompute deluca_freq in freq_df
+freq_df <- freq_df %>%
+  mutate(deluca_freq = obs_deluca / obs_florida)
+
 # Label top 5 statewide + all DeLuca-only + all Rare Everywhere
 label_points <- freq_df %>%
-  arrange(desc(obs_deluca)) %>%   
+  arrange(desc(obs_florida)) %>%
   slice_head(n = 5) %>%
-  bind_rows(freq_df %>% filter(deluca_only | category == "Rare Everywhere")) %>%
+  bind_rows(
+    freq_df %>%
+      arrange(desc(obs_deluca)) %>%
+      slice_head(n = 5)
+  ) %>%
+  bind_rows(
+    freq_df %>% filter(deluca_only)
+  ) %>%
+  bind_rows(
+    freq_df %>% filter(category == "Rare Everywhere")
+  ) %>%
   distinct(taxon_species_name, .keep_all = TRUE)
 
-### Plot
-freq_plot_prop <- ggplot(freq_df, aes(x = obs_deluca, y = freq_ratio_deluca, color = category)) +
+### Plot with obs_deluca vs. proportion
+freq_plot_prop <- ggplot(freq_df, aes(x = obs_deluca, y = deluca_freq, color = category)) +
   geom_point(alpha = 1, size = 3) +
-  geom_jitter() +
   geom_text_repel(
     data = label_points,
-    aes(label = taxon_species_name),
+    aes(x = obs_deluca, y = deluca_freq, label = taxon_species_name), 
     size = 3,
     fontface = "bold",
     color = "black",
@@ -261,7 +270,7 @@ ggsave("Figures/figure_5_rarity_deluca_state.png", plot = freq_plot_prop, bg = "
 #### Now same figure
 ### without labels
 ### Plot
-freq_plot_prop_clean <- ggplot(freq_df, aes(x = obs_deluca, y = freq_ratio_deluca, color = category)) +
+freq_plot_prop_clean <- ggplot(freq_df, aes(x = obs_deluca, y = deluca_freq, color = category)) +
   geom_jitter(size = 2.5, alpha = 0.75, width = 0.05, height = 0) + 
   labs(
     x = "DeLuca Observations (total count)",
@@ -292,7 +301,7 @@ freq_plot_prop_clean <- ggplot(freq_df, aes(x = obs_deluca, y = freq_ratio_deluc
 freq_plot_prop_clean
 
 ## save as png
-ggsave("Figures/figure_5_rarity_deluca_state_clean.png", plot = freq_plot_prop_clean, bg = "transparent")
+ggsave("Figures/figure_5_rarity_deluca_state_clean.png", plot = freq_plot_prop_clean, width = 10, height = 7, bg = "transparent")
 
 ###############################
 ###### OR how it performs total
@@ -301,12 +310,11 @@ ggsave("Figures/figure_5_rarity_deluca_state_clean.png", plot = freq_plot_prop_c
 ###############################
 regional_counts <- regional_species_counts %>%
   mutate(
-    Prop_DeLuca = 1,
     Prop_Osceola = deluca_bioblitz / `Osceola County`,
     Prop_Florida = deluca_bioblitz / Florida,
     Prop_All = deluca_bioblitz / All
   ) %>%
-  select(Species, Prop_DeLuca, Prop_Osceola, Prop_Florida, Prop_All) %>%
+  select(Species, Prop_Osceola, Prop_Florida, Prop_All) %>%
   pivot_longer(
     cols = starts_with("Prop"),
     names_to = "Group",
@@ -314,8 +322,8 @@ regional_counts <- regional_species_counts %>%
   ) %>%
   mutate(
     Group = factor(Group, 
-                   levels = c("Prop_DeLuca", "Prop_Osceola", "Prop_Florida", "Prop_All"),
-                   labels = c("DeLuca", "Osceola County", "Florida (All)", "All"))
+                   levels = c("Prop_Osceola", "Prop_Florida", "Prop_All"),
+                   labels = c("Osceola County", "Florida", "All of iNaturalist"))
   )
 
 # Plot
@@ -335,10 +343,9 @@ regional_counts_plot <- ggplot(regional_counts, aes(x = Group, y = Proportion)) 
     y = "Proportion of Records from DeLuca"
   ) +
   theme(
-    plot.title = element_text(face = "bold", hjust = 0.5),
-    axis.text.x = element_text(angle = 15, hjust = 0.5),
+    axis.text.x = element_text(color = "black", angle = 0, hjust = 0.5),
     panel.grid = element_blank(),
-    panel.border = element_rect(color = "black", fill = NA, size = 1)
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5)
   )
 
 regional_counts_plot

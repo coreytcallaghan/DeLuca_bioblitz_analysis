@@ -63,7 +63,7 @@ species_hist_plot_RG <- ggplot(species_hist_RG, aes(x = N)) +
     axis.text = element_text(color = "black")
   ) +
   xlab("Number of observations") +
-  ylab("Number of species (RG)")
+  ylab("Number of species")
 
 # plot an accumulation type plot of new species
 first_obs_species_all <- deluca_bioblitz %>%
@@ -103,11 +103,11 @@ first_obs_species_RG <- deluca_bioblitz %>%
   mutate(cumulative_species = cumsum(new_species))
 
 accum_RG_plot <- ggplot(first_obs_species_RG, aes(x = observed_on)) +
-  geom_col(aes(y = new_species), fill = "black", alpha = 1, width = 4) +
+  geom_col(aes(y = new_species), fill = "black", alpha = 1, width = 6) +
   geom_line(aes(y = cumulative_species), color = "darkgreen", size = 1.2) +
   geom_point(aes(y = cumulative_species), size = 2, color = "darkgreen") +
   xlab("Sampling Date") +
-  ylab("Species count (RG)") +
+  ylab("Number of species") +
   theme_bw() +
   theme(
     panel.grid = element_blank(),
@@ -116,10 +116,11 @@ accum_RG_plot <- ggplot(first_obs_species_RG, aes(x = observed_on)) +
   )
 
 #### Final figure 3
-final_figure_3 <- species_hist_plot_RG + accum_RG_plot
+final_figure_3 <- species_hist_plot_RG + accum_RG_plot +
+  plot_annotation(tag_levels = "A")
 final_figure_3
 
-ggsave("Figures/figure_3_accum_hist.png", plot = final_figure_3, bg = "transparent", width = 10, height = 5, dpi = 300)
+ggsave("Figures/figure_3_accum_hist.png", plot = final_figure_3, bg = "transparent",dpi = 300)
 
 ####################
 #### LPH addition
@@ -254,11 +255,8 @@ ggsave("Figures/figure_2_bivariate_legend_deluca.png", plot = bi_legend, bg = "t
 ### Figure 4: Comparison of DeLuca vs Random Polygons
 ##############################################
 ########## let's do some context of how DeLuca 'performs' to 100 random polygons
-# Project to UTM for area calc (zone 17N for Florida)
-deluca_proj <- st_transform(deluca, 32617)
-
 # Area in km²
-deluca_area_km2 <- as.numeric(st_area(deluca_proj)) / 1e6
+deluca_area_km2 <- as.numeric(st_area(deluca)) / 1e6
 
 # Normalize DeLuca values
 deluca_values_norm <- data.frame(
@@ -270,10 +268,16 @@ deluca_values_norm <- data.frame(
     nrow() / deluca_area_km2
 ) %>%
   pivot_longer(cols = everything(), names_to = "Metric", values_to = "Value") %>%
-  mutate(Source = "DeLuca Bioblitz")
+  mutate(
+    Metric = recode(Metric,
+                    "Observers_per_km2"    = "Observers per km²",
+                    "Observations_per_km2" = "Observations per km²",
+                    "Species_per_km2"      = "Species per km²"
+    ),
+    Source = "DeLuca Bioblitz"
+  )
 
 # Normalize random polygons
-# Join random polygon table with shapefile if not already
 random_values_norm <- random_polygon_effort %>%
   dplyr::select(polygon_id, number_of_observations, number_of_observers, number_of_species) %>%
   mutate(
@@ -284,7 +288,14 @@ random_values_norm <- random_polygon_effort %>%
   select(polygon_id, Observers_per_km2, Observations_per_km2, Species_per_km2) %>%
   pivot_longer(cols = c("Observers_per_km2","Observations_per_km2","Species_per_km2"),
                names_to = "Metric", values_to = "Value") %>%
-  mutate(Source = "Random Polygons")
+  mutate(
+    Metric = recode(Metric,
+                    "Observers_per_km2"    = "Observers per km²",
+                    "Observations_per_km2" = "Observations per km²",
+                    "Species_per_km2"      = "Species per km²"
+    ),
+    Source = "Random Polygons"
+  )
 
 # Combine datasets
 combined_values <- bind_rows(deluca_values_norm, random_values_norm)
