@@ -18,10 +18,42 @@ regional_species_counts <- read_csv("Data/Summarized_Data/regional_species_count
 
 ## Get number of unique observers
 unique(deluca_bioblitz$user_login) #203
+
+## remove the one day with 3 observations
 unique(deluca_bioblitz$observed_on) #5, but 2023 is broken into the 24th and 25th (3 observations)
 sum(deluca_bioblitz$observed_on == "2023-02-25")
 deluca_bioblitz <- deluca_bioblitz %>%
   filter(observed_on != "2023-02-25")
+
+## get unique per year
+## Add year column
+deluca_bioblitz <- deluca_bioblitz %>%
+  mutate(year = year(observed_on))
+
+## Get unique observers per year
+observers_by_year <- deluca_bioblitz %>%
+  group_by(year) %>%
+  summarise(observers = list(unique(user_login)), .groups = "drop")
+
+## Build cumulative list of all past observers BEFORE each year
+previous_all <- accumulate(observers_by_year$observers, union) |> lag()
+
+## Attach cumulative history and calculate repeat rate
+repeat_observer_rates <- observers_by_year %>%
+  mutate(
+    previous_all = previous_all,
+    n_total = lengths(observers),
+    n_repeat = map2_int(observers, previous_all, ~ if (is.null(.y)) NA_integer_ else length(intersect(.x, .y))),
+    repeat_rate = n_repeat / n_total
+  )
+
+repeat_observer_rates
+
+## Calculate observers present in all years
+observers_every_year <- reduce(observers_by_year$observers, intersect)
+
+## Output results
+length(observers_every_year)
 
 ########################
 # Plot Supplementary Figure for observations and observers bell curve log scale
