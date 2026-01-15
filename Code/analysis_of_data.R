@@ -77,9 +77,9 @@ first_obs_species_all <- deluca_bioblitz %>%
   mutate(cumulative_species = cumsum(new_species))
 
 accum_all_plot <- ggplot(first_obs_species_all, aes(x = observed_on)) +
-  geom_col(aes(y = new_species), fill = "steelblue", alpha = 0.6, width = 4) +
-  geom_line(aes(y = cumulative_species), color = "darkgreen", size = 1.2) +
-  geom_point(aes(y = cumulative_species), size = 2, color = "darkgreen") +
+  geom_col(aes(y = new_species), fill = "darkgoldenrod1", alpha = 0.6, width = 4) +
+  geom_line(aes(y = cumulative_species), color = "darkgoldenrod1", size = 1.2) +
+  geom_point(aes(y = cumulative_species), size = 2, color = "darkgoldenrod1") +
   xlab("Sampling Date") +
   ylab("Species count (RG + Needs ID)") +
   theme_bw() +
@@ -104,8 +104,8 @@ first_obs_species_RG <- deluca_bioblitz %>%
 
 accum_RG_plot <- ggplot(first_obs_species_RG, aes(x = observed_on)) +
   geom_col(aes(y = new_species), fill = "black", alpha = 1, width = 6) +
-  geom_line(aes(y = cumulative_species), color = "darkgreen", size = 1.2) +
-  geom_point(aes(y = cumulative_species), size = 2, color = "darkgreen") +
+  geom_line(aes(y = cumulative_species), color = "darkgoldenrod1", size = 1.2) +
+  geom_point(aes(y = cumulative_species), size = 2, color = "darkgoldenrod1") +
   xlab("Sampling Date") +
   ylab("Number of species") +
   theme_bw() +
@@ -313,7 +313,7 @@ fig_4 <- combined_values %>%
   ) +
   geom_point(
     data = subset(combined_values, Source == "DeLuca Bioblitz"),
-    color = "firebrick1",
+    color = "darkgoldenrod1",
     size = 4,
     shape = 18
   ) +
