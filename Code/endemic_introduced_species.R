@@ -48,7 +48,7 @@ cumul_plot_endemic_invasive <- ggplot(
   cumulative_counts, aes(x = first_year, y = cumulative_species, color = establishment_means)) +
   geom_line(size = 1.5) +
   geom_point(size = 2) +
-  scale_color_manual(values = c("endemic" = "#4575b4", "introduced" = "#f46d43")) +
+  scale_color_manual(values = c("endemic" = "firebrick", "introduced" = "darkolivegreen3")) +
   labs(
     x = NULL,
     y = "Cumulative Number of Unique Species",

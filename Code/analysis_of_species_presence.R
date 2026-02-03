@@ -79,7 +79,7 @@ o_productivity <- ggplot(observer_summary, aes(x = n_obs, fill = top_5)) +
     position = "identity"
   ) +
   scale_fill_manual(
-    values = c("FALSE" = "grey50", "TRUE" = "#1f78b4"),
+    values = c("FALSE" = "grey50", "TRUE" = "darkolivegreen3"),
     labels = c("Other Observers", "Top 5% Observers"),
     name = NULL
   ) +
@@ -256,7 +256,7 @@ label_points <- freq_df %>%
   distinct(taxon_species_name, .keep_all = TRUE)
 
 ### Plot with obs_deluca vs. proportion
-freq_plot_prop <- ggplot(freq_df, aes(x = obs_deluca, y = deluca_freq, color = category)) +
+freq_plot_prop <- ggplot(freq_df, aes(x = obs_deluca, y = deluca_freq, color = category, shape = category)) +
   geom_point(alpha = 1, size = 3) +
   geom_text_repel(
     data = label_points,
@@ -275,11 +275,20 @@ freq_plot_prop <- ggplot(freq_df, aes(x = obs_deluca, y = deluca_freq, color = c
   scale_x_log10() +
   scale_color_manual(
     values = c(
-      "Unique to DeLuca" = "#d95f02",
-      "Locally Rare" = "#7570b3", 
-      "Rare Everywhere" = "#1b9e77",
-      "Common Everywhere" = "#1f78b4",
-      "Underreported Everywhere" = "#e6ab02" 
+      "Unique to DeLuca" = "firebrick",
+      "Locally Rare" = "mediumpurple3", 
+      "Rare Everywhere" = "darkolivegreen3",
+      "Common Everywhere" = "lightskyblue2",
+      "Underreported Everywhere" = "darkgoldenrod1" 
+    )
+  ) +
+  scale_shape_manual(
+    values = c(
+      "Unique to DeLuca" = 3, 
+      "Locally Rare" = 15,
+      "Rare Everywhere" = 16,
+      "Common Everywhere" = 18, 
+      "Underreported Everywhere" = 17
     )
   ) +
   theme_minimal() +
@@ -302,28 +311,46 @@ ggsave("Figures/figure_5_rarity_deluca_state.png", plot = freq_plot_prop, bg = "
 #### Now same figure
 ### without labels
 ### Plot
-freq_plot_prop_clean <- ggplot(freq_df, aes(x = obs_deluca, y = deluca_freq, color = category)) +
-  geom_jitter(size = 2.5, alpha = 0.75, width = 0.05, height = 0) + 
+freq_plot_prop_clean <- ggplot(
+  freq_df,
+  aes(
+    x = obs_deluca,
+    y = deluca_freq,
+    color = category,
+    shape = category
+  )
+) +
+  geom_jitter(size = 2.5, alpha = 0.75, width = 0.05, height = 0) +
   labs(
     x = "DeLuca Observations (total count)",
     y = "Proportion of DeLuca / Florida observations",
-    color = "Category"
+    color = "Category",
+    shape = "Category"   # <-- this line merges the legends
   ) +
   scale_x_log10() +
   scale_color_manual(
     values = c(
-      "Unique to DeLuca" = "#d95f02",
-      "Locally Rare" = "#7570b3", 
-      "Rare Everywhere" = "#1b9e77",
-      "Common Everywhere" = "#1f78b4",
-      "Underreported Everywhere" = "#e6ab02" 
+      "Unique to DeLuca" = "firebrick",
+      "Locally Rare" = "mediumpurple3",
+      "Rare Everywhere" = "darkolivegreen3",
+      "Common Everywhere" = "lightskyblue2",
+      "Underreported Everywhere" = "darkgoldenrod1"
+    )
+  ) +
+  scale_shape_manual(
+    values = c(
+      "Unique to DeLuca" = 17,
+      "Locally Rare" = 15,
+      "Rare Everywhere" = 16,
+      "Common Everywhere" = 18,
+      "Underreported Everywhere" = 19
     )
   ) +
   theme_minimal() +
   theme(
     panel.grid = element_blank(),
     axis.line = element_line(color = "black", linewidth = 0.6),
-    legend.position = "bottom", 
+    legend.position = "bottom",
     legend.direction = "horizontal",
     legend.box = "horizontal",
     legend.title = element_text(size = 12),
@@ -360,7 +387,7 @@ regional_counts <- regional_species_counts %>%
 
 # Plot
 regional_counts_plot <- ggplot(regional_counts, aes(x = Group, y = Proportion)) +
-  geom_boxplot(fill = "#1f78b4", alpha = 1, width = 0.6, outlier.shape = NA) +
+  geom_boxplot(fill = "darkolivegreen3", alpha = 1, width = 0.6, outlier.shape = NA) +
   geom_jitter(width = 0.15, alpha = 0.5, color = "black", size = 1.8) +
   scale_y_continuous(
     trans = pseudo_log_trans(base = 10, sigma = 1e-4),

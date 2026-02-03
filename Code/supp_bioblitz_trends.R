@@ -9,6 +9,12 @@ library(tidyverse)
 #read in google trends data and web of science data
 bioblitz_trends <- read_csv("Data/Supplemental_Analysis/bioblitz_trends.csv")
 
+google <- bioblitz_trends %>%
+  filter(Source == "Google Scholar")
+
+inat <- bioblitz_trends %>%
+  filter(Source == "iNaturalist Projects")
+
 # Find scaling factor to align ranges
 scale_factor <- max(google$n, na.rm=TRUE) / max(inat$n, na.rm=TRUE)
 
@@ -19,13 +25,13 @@ ggplot() +
     name = "Number of Articles on Google Scholar",
     sec.axis = sec_axis(~./scale_factor, name = "Number of iNaturalist Projects")
   ) +
-  scale_color_manual(values = c("Google Scholar" = "#4575b4",    # muted blue
-                                "iNaturalist projects" = "#f46d43")) + # muted orange
+  scale_color_manual(values = c("Google Scholar" = "firebrick", 
+                                "iNaturalist projects" = "darkolivegreen3")) +
   scale_x_continuous(breaks = seq(2010, 2022, 2), expand = c(0, 0)) +
   theme_classic() +
   theme(
-    axis.title.y.left = element_text(color = "#4575b4", face="bold"),
-    axis.title.y.right = element_text(color = "#f46d43", face="bold"),
+    axis.title.y.left = element_text(color = "firebrick", face="bold"),
+    axis.title.y.right = element_text(color = "darkolivegreen3", face="bold"),
     legend.position = "bottom"
   ) +
   labs(x = "Year", color = "Source")
